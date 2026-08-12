@@ -1,0 +1,24 @@
+.DS_Store
+AGENTS.md
+**/AGENTS.md
+design-qa.md
+**/design-qa.md
+.gateway-dev/
+.gateway-e2e/
+**/node_modules/
+**/dist/
+**/test-results/
+**/playwright-report/
+
+# Local build and simulator output
+**/*.xcresult/
+**/*.xcresult.zip
+
+# Generated binaries and media are kept out of the source release by default.
+# Re-enable individual files only when they are intentionally published.
+artifacts/
+artifacts/**/*.apk
+artifacts/**/*.ipa
+artifacts/**/*.mp4
+artifacts/**/*.webm
+artifacts/**/*.zip
