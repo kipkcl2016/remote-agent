@@ -2352,6 +2352,10 @@ const AgentUsageStatus = memo(function AgentUsageStatus({
       limitingWindow.resetsAt ? `，${formatUsageReset(limitingWindow.resetsAt)}` : ""
     }`;
     state = "is-available";
+  } else if (usage && /API\s*模式/.test(usage.message ?? "")) {
+    label = "API模式";
+    description = usage.message ?? `${agent} 当前为 API 模式，无套餐额度窗口`;
+    state = "is-unavailable";
   } else if (usage) {
     label = "无法获取";
     description = usage.message ?? `${agent} 无法获取额度信息`;

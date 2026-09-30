@@ -11,9 +11,9 @@ test("native history shows disallowed directories as browse-only", async () => {
   const dirs = {
     cursor: join(root, "cursor"),
     cursorChats: join(root, "cursor-chats"),
+    cursorComposerDb: join(root, "missing-state.vscdb"),
     claude: join(root, "claude"),
     codex: join(root, "codex"),
-    codexArchived: join(root, "codex-archived"),
   };
 
   try {
@@ -139,6 +139,61 @@ test("native history shows disallowed directories as browse-only", async () => {
   }
 });
 
+test("native history ignores Codex archived sessions", async () => {
+  const root = mkdtempSync(join(tmpdir(), "remote-agent-history-archived-"));
+  const archivedRoot = join(root, "codex-archived");
+  const dirs = {
+    cursor: join(root, "cursor"),
+    cursorChats: join(root, "cursor-chats"),
+    cursorComposerDb: join(root, "missing-state.vscdb"),
+    claude: join(root, "claude"),
+    codex: join(root, "codex"),
+  };
+
+  try {
+    mkdirSync(join(dirs.codex, "2026", "09", "30"), { recursive: true });
+    writeFileSync(
+      join(dirs.codex, "2026", "09", "30", "rollout-active-session.jsonl"),
+      [
+        JSON.stringify({
+          type: "session_meta",
+          payload: { id: "active-session", cwd: root },
+        }),
+        JSON.stringify({
+          type: "event_msg",
+          payload: { type: "user_message", message: "Active Codex" },
+        }),
+        "",
+      ].join("\n"),
+    );
+
+    mkdirSync(join(archivedRoot, "2026", "09", "30"), { recursive: true });
+    writeFileSync(
+      join(archivedRoot, "2026", "09", "30", "rollout-archived-session.jsonl"),
+      [
+        JSON.stringify({
+          type: "session_meta",
+          payload: { id: "archived-session", cwd: root },
+        }),
+        JSON.stringify({
+          type: "event_msg",
+          payload: { type: "user_message", message: "Archived Codex" },
+        }),
+        "",
+      ].join("\n"),
+    );
+
+    const service = new NativeHistoryService(dirs, [root]);
+    const sessions = await service.list({ agent: "codex", limit: 50 });
+    assert.equal(sessions.some((session) => session.id === "active-session"), true);
+    assert.equal(sessions.some((session) => session.id === "archived-session"), false);
+    assert.equal(sessions.every((session) => session.archived !== true), true);
+    assert.equal(await service.get("codex", "archived-session"), undefined);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("native history caps each Agent project independently", async () => {
   const root = mkdtempSync(join(tmpdir(), "remote-agent-history-projects-"));
   const firstProject = join(root, "first");
@@ -148,9 +203,9 @@ test("native history caps each Agent project independently", async () => {
   const dirs = {
     cursor: join(root, "cursor"),
     cursorChats: join(root, "cursor-chats"),
+    cursorComposerDb: join(root, "missing-state.vscdb"),
     claude: join(root, "claude"),
     codex: join(root, "codex"),
-    codexArchived: join(root, "codex-archived"),
   };
   const codexThreads = {
     list: async () => [firstProject, secondProject].flatMap((cwd, projectIndex) => (

@@ -17,9 +17,9 @@
 
 | 值 | CLI | 原生历史默认位置 |
 | --- | --- | --- |
-| `cursor` | `cursor-agent` | `~/.cursor/acp-sessions` 与 `~/.cursor/chats` |
+| `cursor` | `cursor-agent` | Cursor `composerHeaders`（IDE 侧栏同源）为主；缺库时回退 `~/.cursor/acp-sessions` 与 `~/.cursor/chats` |
 | `claude` | `claude` | `~/.claude/projects` |
-| `codex` | `codex` | `~/.codex/sessions` 与 `~/.codex/archived_sessions` |
+| `codex` | `codex` | `~/.codex/sessions`（不含 archived） |
 
 ### 2.2 权限模式和 adapter 映射
 
@@ -134,7 +134,7 @@ type NativeHistorySession = {
 };
 ```
 
-所有本机原生历史均可返回。`status` 是向后兼容的可选字段；当前 Cursor/Claude 默认为 `completed`，Codex 将 app-server 状态与最近 rollout 生命周期事件合并，避免另一个桌面进程中的活动 thread 被 `notLoaded` 误判为完成。cwd 未通过 `REMOTE_AGENT_ROOTS` 真实路径校验时，`resumable=false`，仍可浏览标题和消息，但续接必须返回 409；`status=running` 的记录同样必须拒绝并发续接。`archived` 当前只用于 Codex archived history。
+所有本机原生历史均可返回。`status` 是向后兼容的可选字段；当前 Cursor/Claude 默认为 `completed`，Codex 将 app-server 状态与最近 rollout 生命周期事件合并，避免另一个桌面进程中的活动 thread 被 `notLoaded` 误判为完成。cwd 未通过 `REMOTE_AGENT_ROOTS` 真实路径校验时，`resumable=false`，仍可浏览标题和消息，但续接必须返回 409；`status=running` 的记录同样必须拒绝并发续接。`archived` 保留为协议可选字段，但网关不再返回 Codex 存档会话，因此实际响应中不会出现 `archived: true`。
 
 `projectId` 与 `projectName` 是向后兼容的可选项目标识。网关从已校验 cwd 向上查找最近的 Git 根目录（`.git` 文件或目录）；找不到时使用规范化 cwd。`projectId` 是该规范化路径的 SHA-256，不暴露额外路径，`projectName` 是根目录 basename。旧网关未返回字段时，客户端必须回退到 cwd 分组。
 
@@ -254,7 +254,7 @@ type PairedDevice = {
 - `message`：不可用时的安全说明，必须包含“无法获取额度信息”，不得包含账号、token、CLI 原始输出或上游响应正文。
 - `updatedAt`：网关生成快照的 ISO 时间。
 
-网关只允许固定的只读探测命令且保持 `shell: false`。Codex 使用官方 app-server `account/rateLimits/read`，优先读取 `rateLimitsByLimitId.codex`，兼容单桶 `rateLimits`。Cursor/Claude 没有稳定机器接口、API 模式没有订阅额度或上游暂时失败时返回 `unavailable`，不能猜测剩余值。结果在网关缓存 60 秒；额度探测与会话同步相互独立。
+网关只允许固定的只读探测命令或固定 Dashboard RPC，且保持 `shell: false`。Codex 在 ChatGPT 登录下使用官方 app-server `account/rateLimits/read`，优先读取 `rateLimitsByLimitId.codex`，兼容单桶 `rateLimits`；`~/.codex/auth.json` 的 `auth_mode` 为 API（或仅有 API Key）时返回 `API模式`。Cursor 使用本机 IDE 登录态调用 `GetCurrentPeriodUsage`，映射 `planUsage.remaining/limit` 为本月剩余比例。Claude/Codex API 模式没有订阅额度窗口或上游暂时失败时返回 `unavailable`，不能猜测剩余值。结果在网关缓存 60 秒；额度探测与会话同步相互独立。响应不得包含账号邮箱、token 或上游原始正文。
 
 ### 5.4 常见错误语义
 
@@ -312,11 +312,12 @@ data: <完整 SessionEvent JSON>
 - 单次扫描最多遍历 5,000 个目标扩展名文件。
 - 摘要只读取文件前 256 KiB；消息只读取文件末尾最多 8 MiB。
 - Claude/Codex 消息限制为最近 1–500 条，默认 100；单条规范化文本最多 20,000 字符。
-- Codex 摘要优先来自 app-server `thread/list`，使用 `thread.name` 作为标题并分别分页读取 active/archived；结果缓存 15 秒。app-server 不可用时回退 JSONL 扫描并按 session id 去重。
+- Codex 摘要优先来自 app-server `thread/list`（仅 `archived=false` 的活跃会话），使用 `thread.name` 作为标题并分页读取；结果缓存 15 秒。app-server 不可用时回退扫描 `~/.codex/sessions` JSONL，并按 session id 去重。`archived_sessions` 与 `thread/list` 的 archived 分页均不读取。
 - 历史列表不按 cwd 隐藏；网关将白名单外记录规范化为 `resumable=false`。`limit` 最大 2,000，`perProjectLimit` 默认 20、最大 100，按 Agent + 项目分别计数。
 - 文件缺失、权限不足、单行 JSON 无效时跳过对应文件/行，而不是使整个列表失败。
 - list/get/messages 允许读取白名单外本机历史；resume 和所有启动 Agent 的路径必须再次应用 allowed roots，不能依赖客户端传入的 `resumable`。
-- Cursor `acp-sessions` 摘要 `resumable=false`；Cursor `chats` 为 true；Cursor messages 当前为空。
+- Cursor 摘要优先读取 IDE `state.vscdb` 的 `composerHeaders`（与 Workspaces 侧栏同一索引）：使用 `name` 作为标题，跳过 archived / draft / subagent；多根工作区从 `.code-workspace` 解析首个 folder 作为 cwd。Glass/composer 会话默认 `resumable=true`（`cursor-agent --resume <id>`），cwd 未通过白名单时仍会被规范化为只读。Composer DB 不可用时回退扫描 `acp-sessions`（只读）+ `chats`（可续接）的 `meta.json`。Cursor messages 当前仍为空。
+- Cursor 的 `acp-sessions/store.db` 和 `chats/*/*/store.db` 消息正文仍不解析；仅读取 `composerHeaders` 索引字段与 `meta.json` 摘要。
 
 ## 9. 环境变量合同
 
@@ -330,10 +331,10 @@ data: <完整 SessionEvent JSON>
 | `REMOTE_AGENT_PAIRING_TTL_MS` | `300000` | 配对码 TTL，正整数 |
 | `REMOTE_AGENT_MAX_BODY_BYTES` | `1048576` | HTTP body 上限，正整数 |
 | `REMOTE_AGENT_CURSOR_HISTORY_DIR` | `~/.cursor/acp-sessions` | Cursor 旧历史 |
-| `REMOTE_AGENT_CURSOR_CHATS_HISTORY_DIR` | `~/.cursor/chats` | Cursor 新历史 |
+| `REMOTE_AGENT_CURSOR_CHATS_HISTORY_DIR` | `~/.cursor/chats` | Cursor chats store（用于可续接标记） |
+| `REMOTE_AGENT_CURSOR_COMPOSER_DB` | `~/Library/Application Support/Cursor/User/globalStorage/state.vscdb` | Cursor IDE 会话索引（标题/归档） |
 | `REMOTE_AGENT_CLAUDE_HISTORY_DIR` | `~/.claude/projects` | Claude 历史 |
-| `REMOTE_AGENT_CODEX_HISTORY_DIR` | `~/.codex/sessions` | Codex 历史 |
-| `REMOTE_AGENT_CODEX_ARCHIVED_HISTORY_DIR` | `~/.codex/archived_sessions` | Codex 归档历史 |
+| `REMOTE_AGENT_CODEX_HISTORY_DIR` | `~/.codex/sessions` | Codex 活跃历史（不含归档） |
 | `VITE_REMOTE_AGENT_URL` | 空 | Web 初始网关 URL；不能承载 token |
 
 ## 10. 协议变更检查

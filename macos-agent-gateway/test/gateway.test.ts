@@ -68,9 +68,9 @@ test("gateway pairs a device and serves the session lifecycle", async () => {
   const historyDirs = {
     cursor: join(root, "cursor"),
     cursorChats: join(root, "cursor-chats"),
+    cursorComposerDb: join(root, "missing-state.vscdb"),
     claude: join(root, "claude"),
     codex: join(root, "codex"),
-    codexArchived: join(root, "codex-archived"),
   };
   mkdirSync(join(historyDirs.codex, "2026", "08", "04"), { recursive: true });
   const nativeId = "11111111-1111-4111-8111-111111111111";
@@ -103,14 +103,14 @@ test("gateway pairs a device and serves the session lifecycle", async () => {
       agent: "cursor",
       state: "unavailable",
       windows: [],
-      message: "无法获取额度信息 · Cursor CLI 暂无个人额度接口",
+      message: "无法获取额度信息 · Cursor 未登录或本机无可用凭证",
       updatedAt: "2026-08-11T00:00:00.000Z",
     },
     {
       agent: "claude",
       state: "unavailable",
       windows: [],
-      message: "无法获取额度信息 · API 模式没有套餐额度",
+      message: "无法获取额度信息 · API模式",
       updatedAt: "2026-08-11T00:00:00.000Z",
     },
     {

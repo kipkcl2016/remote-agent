@@ -61,7 +61,7 @@ Remote Agent 让已授权的移动设备在不持有 Agent API 密钥、不接�
 | `AGENT-002` | 安全启动 Agent 子进程 | 已实现 | executable 与参数由 adapter 固定，`shell: false`，cwd 先经过真实路径白名单校验；客户端不能提供命令、参数或环境变量 |
 | `PERMISSION-001` | `plan / ask / auto` 权限模式 | 受限实现 | API 支持三个值；当前 UI 的“默认受限执行”只在 `ask` 与 `auto` 间切换且不持久化。`ask` 在三个短进程 CLI 中等同 plan/只读类模式，不是手机审批 |
 | `AGENT-003` | Agent 进程生命周期 | 已实现 | 网关记录启动、输出、工具、审批提示、完成和错误事件；支持 SIGTERM 取消，5 秒未退出再 SIGKILL；网关关闭时取消活动进程 |
-| `AGENT-004` | Agent 剩余额度 | 受限实现 | 已认证移动端每 60 秒读取一次网关额度快照；额度摘要集成在 Cursor/Claude/Codex Tab 的第二行，可用时显示最紧张窗口的真实剩余比例，不可用时显示“无法获取”，不再占用独立卡片区域。Codex 通过官方 app-server `account/rateLimits/read` 读取窗口数据；Cursor 个人 CLI 与 Claude CLI 当前没有稳定的机器读取额度接口，Claude API 模式也没有订阅额度。探测失败不得阻塞会话同步，也不得回传账号、密钥或原始 CLI 输出 |
+| `AGENT-004` | Agent 剩余额度 | 受限实现 | 已认证移动端每 60 秒读取一次网关额度快照；额度摘要集成在 Cursor/Claude/Codex Tab 的第二行，可用时显示最紧张窗口的真实剩余比例，Claude/Codex API 模式显示“API模式”，其余不可用时显示“无法获取”，不再占用独立卡片区域。Codex 在 ChatGPT 登录下通过官方 app-server `account/rateLimits/read` 读取窗口；API Key 登录则显示 API模式。Cursor 通过本机 IDE 登录态调用 Dashboard `GetCurrentPeriodUsage` 读取本月 included 剩余比例；API 模式无套餐额度窗口，不得猜测剩余值。探测失败不得阻塞会话同步，也不得回传账号、密钥或原始上游响应 |
 
 ### 3.3 会话与实时输出
 
@@ -84,9 +84,9 @@ Remote Agent 让已授权的移动设备在不持有 Agent API 密钥、不接�
 
 | 功能 ID | 功能 | 状态 | 当前行为与边界 |
 | --- | --- | --- | --- |
-| `HISTORY-001` | 扫描原生会话摘要 | 已实现 | Cursor/Claude 扫描本机历史；Codex 使用官方 app-server `thread/list`（含 archived）取得与桌面端一致的 `thread.name`，并以最近 24 小时 rollout 的生命周期事件校正跨进程 `notLoaded` 状态，失败时回退 JSONL。所有 cwd 的历史均可见，白名单外记录标记为只读，不能从手机续接或启动 Agent |
+| `HISTORY-001` | 扫描原生会话摘要 | 已实现 | Cursor 优先读取 IDE `composerHeaders`（与侧栏标题/归档一致），缺库时回退 chats/acp；Claude 扫描本机历史；Codex 使用官方 app-server `thread/list`（仅活跃会话，不含 archived）取得与桌面端一致的 `thread.name`，并以最近 24 小时 rollout 的生命周期事件校正跨进程 `notLoaded` 状态，失败时回退 `~/.codex/sessions` JSONL。所有 cwd 的历史均可见，白名单外记录标记为只读，不能从手机续接或启动 Agent |
 | `HISTORY-002` | 查看原生历史消息 | 受限实现 | Claude/Codex 只返回用户和助手文本，剔除已知注入上下文并截断过长文本；运行中的原生 Codex 详情约每秒重读最新消息并在终态后停止，属于近实时轮询而非 SSE 推送；Cursor 当前只返回空消息数组 |
-| `HISTORY-003` | 续接原生会话 | 受限实现 | Claude、Codex 和新版 Cursor chats 可续接；旧 Cursor `acp-sessions` 和白名单外记录只读。列表不再占用一行显示“原生历史 / 只读记录”；不可续接时详情底部输入框显示“仅查看”并保持禁用。续接后创建一个新的网关会话承载事件 |
+| `HISTORY-003` | 续接原生会话 | 受限实现 | Claude、Codex 和新版 Cursor Glass/composer 会话可续接；旧 Cursor `acp-sessions` 和白名单外记录只读。列表不再占用一行显示“原生历史 / 只读记录”；不可续接时详情底部输入框显示“仅查看”并保持禁用。续接后创建一个新的网关会话承载事件 |
 
 ### 3.5 移动运行时、设置与交付
 

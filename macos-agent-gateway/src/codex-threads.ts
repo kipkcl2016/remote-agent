@@ -100,7 +100,6 @@ async function readCodexThreads(): Promise<NativeHistorySession[]> {
     let settled = false;
     let buffer = "";
     let totalBytes = 0;
-    let archived = false;
     let requestId = 2;
     let expectedRequestId = 2;
     let pageCount = 0;
@@ -130,7 +129,8 @@ async function readCodexThreads(): Promise<NativeHistorySession[]> {
           limit: PAGE_LIMIT,
           sortKey: "updated_at",
           sortDirection: "desc",
-          archived,
+          // Active threads only; do not page into archived history.
+          archived: false,
           ...(cursor ? { cursor } : {}),
         },
       });
@@ -158,13 +158,10 @@ async function readCodexThreads(): Promise<NativeHistorySession[]> {
         finish(new Error("codex thread list unavailable"));
         return;
       }
-      const parsed = parseCodexThreadPage(message.result, archived);
+      const parsed = parseCodexThreadPage(message.result, false);
       sessions.push(...parsed.sessions);
       if (parsed.nextCursor) {
         requestPage(parsed.nextCursor);
-      } else if (!archived) {
-        archived = true;
-        requestPage();
       } else {
         finish();
       }

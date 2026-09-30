@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { AgentUsageService, parseCodexRateLimitWindows } from "../src/agent-usage.js";
+import {
+  AgentUsageService,
+  isCodexApiModeFromAuth,
+  parseCodexRateLimitWindows,
+  parseCursorPeriodUsageWindows,
+} from "../src/agent-usage.js";
 import type { AgentKind, AgentUsage } from "../src/types.js";
 
 test("Codex rate-limit snapshots map to remaining short and long windows", () => {
@@ -21,6 +26,34 @@ test("Codex rate-limit snapshots map to remaining short and long windows", () =>
     },
   }), [{ label: "1 小时", remainingPercent: 85 }]);
   assert.deepEqual(parseCodexRateLimitWindows({ rateLimits: null }), []);
+});
+
+test("Cursor period usage maps included remaining percent and billing reset", () => {
+  assert.deepEqual(parseCursorPeriodUsageWindows({
+    billingCycleEnd: "1793003936000",
+    planUsage: {
+      remaining: 239,
+      limit: 2000,
+      totalPercentUsed: 3.55,
+    },
+  }), [{
+    label: "本月",
+    remainingPercent: 12,
+    resetsAt: "2026-10-26T08:38:56.000Z",
+  }]);
+
+  assert.deepEqual(parseCursorPeriodUsageWindows({
+    planUsage: { totalPercentUsed: 40 },
+  }), [{ label: "本月", remainingPercent: 60 }]);
+  assert.deepEqual(parseCursorPeriodUsageWindows({ planUsage: {} }), []);
+});
+
+test("Codex API auth mode is detected from auth.json and env", () => {
+  assert.equal(isCodexApiModeFromAuth({ auth_mode: "chatgpt", tokens: {} }), false);
+  assert.equal(isCodexApiModeFromAuth({ auth_mode: "api" }), true);
+  assert.equal(isCodexApiModeFromAuth({ auth_mode: "apikey" }), true);
+  assert.equal(isCodexApiModeFromAuth({ OPENAI_API_KEY: "sk-test" }), true);
+  assert.equal(isCodexApiModeFromAuth({ OPENAI_API_KEY: "sk-test", tokens: { id: 1 } }), false);
 });
 
 test("Agent usage probes are cached for 60 seconds and failures stay structured", async () => {

@@ -9,6 +9,7 @@ import {
 } from "node:fs";
 import { basename, dirname, extname, join } from "node:path";
 import type { CodexThreadProvider } from "./codex-threads.js";
+import { scanCursorComposerHeaders } from "./cursor-composers.js";
 import { resolveAllowedWorkingDirectory } from "./security.js";
 import { ProjectResolver } from "./project-resolver.js";
 import type { GatewayConfig } from "./config.js";
@@ -76,7 +77,7 @@ export class NativeHistoryService {
     if (agent === "cursor") return [];
     const path = agent === "claude"
       ? findClaudePath(this.dirs.claude, id)
-      : findCodexPath([this.dirs.codex, this.dirs.codexArchived], id);
+      : findCodexPath([this.dirs.codex], id);
     if (!path) return [];
     const messages = agent === "claude" ? readClaudeMessages(path) : readCodexMessages(path);
     return messages.slice(-Math.max(1, Math.min(limit, 500)));
@@ -92,7 +93,7 @@ export class NativeHistoryService {
     if (agent === "cursor") return { session, messages: [] };
     const path = agent === "claude"
       ? findClaudePath(this.dirs.claude, id)
-      : findCodexPath([this.dirs.codex, this.dirs.codexArchived], id);
+      : findCodexPath([this.dirs.codex], id);
     if (!path) return { session, messages: [] };
     const messages = agent === "claude" ? readClaudeMessages(path) : readCodexMessages(path);
     return {
@@ -103,6 +104,17 @@ export class NativeHistoryService {
 
   private async scanAgent(agent: AgentKind): Promise<NativeHistorySession[]> {
     if (agent === "cursor") {
+      const fromHeaders = scanCursorComposerHeaders(this.dirs.cursorComposerDb);
+      if (fromHeaders.length > 0) {
+        // Glass/composer IDs are valid cursor-agent --resume targets; allowed-roots
+        // still applied in withProject(). Do not require ~/.cursor/chats stores —
+        // modern IDE sessions often only exist in composerHeaders + transcripts.
+        return fromHeaders.map((session) => ({
+          ...session,
+          resumable: true,
+        }));
+      }
+      // Fallback when Composer DB is missing: legacy acp-sessions + chats meta.json scan.
       const sessions = [
         ...scanCursor(this.dirs.cursor, false),
         ...scanCursor(this.dirs.cursorChats, true),
@@ -110,10 +122,8 @@ export class NativeHistoryService {
       return [...new Map(sessions.map((session) => [session.id, session])).values()];
     }
     if (agent === "claude") return scanClaude(this.dirs.claude);
-    const rollouts = deduplicateSessions([
-      ...scanCodex(this.dirs.codex, false),
-      ...scanCodex(this.dirs.codexArchived, true),
-    ]);
+    // Active Codex sessions only; archived_sessions are intentionally ignored.
+    const rollouts = deduplicateSessions(scanCodex(this.dirs.codex));
     if (this.codexThreads) {
       try {
         const catalog = await this.codexThreads.list();
@@ -230,7 +240,7 @@ function scanClaude(root: string): NativeHistorySession[] {
     });
 }
 
-function scanCodex(root: string, archived: boolean): NativeHistorySession[] {
+function scanCodex(root: string): NativeHistorySession[] {
   return walkFiles(root, ".jsonl")
     .slice(0, MAX_SCAN_FILES)
     .flatMap((path) => {
@@ -261,9 +271,8 @@ function scanCodex(root: string, archived: boolean): NativeHistorySession[] {
           cwd,
           ...(createdAt ? { createdAt } : {}),
           updatedAt: stats.mtime.toISOString(),
-          status: readCodexRuntimeStatus(path, stats.mtimeMs, archived),
+          status: readCodexRuntimeStatus(path, stats.mtimeMs),
           resumable: true,
-          ...(archived ? { archived: true } : {}),
           source: "native" as const,
         }];
       } catch {
@@ -275,9 +284,8 @@ function scanCodex(root: string, archived: boolean): NativeHistorySession[] {
 function readCodexRuntimeStatus(
   path: string,
   modifiedAtMs: number,
-  archived: boolean,
 ): "running" | "completed" | "failed" {
-  if (archived || Date.now() - modifiedAtMs > CODEX_RUNTIME_STATUS_MAX_AGE_MS) {
+  if (Date.now() - modifiedAtMs > CODEX_RUNTIME_STATUS_MAX_AGE_MS) {
     return "completed";
   }
   const rows = readJsonLinesWindow(path);

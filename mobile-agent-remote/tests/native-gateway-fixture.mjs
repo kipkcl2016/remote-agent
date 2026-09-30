@@ -275,14 +275,14 @@ async function handle(gateway, request, response) {
           agent: "cursor",
           state: "unavailable",
           windows: [],
-          message: "无法获取额度信息 · Cursor CLI 暂无个人额度接口",
+          message: "无法获取额度信息 · Cursor 未登录或本机无可用凭证",
           updatedAt: new Date().toISOString(),
         },
         {
           agent: "claude",
           state: "unavailable",
           windows: [],
-          message: "无法获取额度信息 · API 模式没有套餐额度",
+          message: "无法获取额度信息 · API模式",
           updatedAt: new Date().toISOString(),
         },
         {

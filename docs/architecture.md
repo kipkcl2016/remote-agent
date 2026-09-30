@@ -13,7 +13,7 @@ flowchart LR
   G --> C1["Cursor Agent CLI"]
   G --> C2["Claude Code CLI"]
   G --> C3["Codex CLI"]
-  H --> F1["~/.cursor/acp-sessions + ~/.cursor/chats"]
+  H --> F1["Cursor composerHeaders + chats"]
   H --> F2["~/.claude/projects"]
   H --> F3["~/.codex/sessions"]
 ```
@@ -68,4 +68,4 @@ macOS 网关负责认证、目录白名单、统一会话模型、Agent 进程�
 3. 接入 APNs/FCM 推送通知与原生深链。
 4. 增加 Tailscale Serve 或受管中继部署方案，网关仍默认只监听回环地址。
 
-Agent 额度由网关的独立只读探测服务提供并缓存 60 秒。Codex 通过本机 app-server 的 `account/rateLimits/read` 获取窗口；Cursor/Claude 没有稳定接口时返回结构化不可用状态。移动端额度轮询不参与会话/历史的并行加载，因此慢响应或失败不会延迟首页会话。
+Agent 额度由网关的独立只读探测服务提供并缓存 60 秒。Codex 在 ChatGPT 登录下通过本机 app-server 的 `account/rateLimits/read` 获取窗口，API Key 模式显示 API模式；Cursor 使用 IDE `state.vscdb` 登录态调用 Dashboard `GetCurrentPeriodUsage`；Claude API 模式同样显示 API模式。移动端额度轮询不参与会话/历史的并行加载，因此慢响应或失败不会延迟首页会话。

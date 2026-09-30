@@ -12,9 +12,9 @@ export type GatewayConfig = {
   historyDirs: {
     cursor: string;
     cursorChats: string;
+    cursorComposerDb: string;
     claude: string;
     codex: string;
-    codexArchived: string;
   };
 };
 
@@ -47,11 +47,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig 
       cursorChats: resolve(
         env.REMOTE_AGENT_CURSOR_CHATS_HISTORY_DIR ?? `${homedir()}/.cursor/chats`,
       ),
-      claude: resolve(env.REMOTE_AGENT_CLAUDE_HISTORY_DIR ?? `${homedir()}/.claude/projects`),
-      codex: resolve(env.REMOTE_AGENT_CODEX_HISTORY_DIR ?? `${homedir()}/.codex/sessions`),
-      codexArchived: resolve(
-        env.REMOTE_AGENT_CODEX_ARCHIVED_HISTORY_DIR ?? `${homedir()}/.codex/archived_sessions`,
+      cursorComposerDb: resolve(
+        env.REMOTE_AGENT_CURSOR_COMPOSER_DB ??
+          `${homedir()}/Library/Application Support/Cursor/User/globalStorage/state.vscdb`,
       ),
+      claude: resolve(env.REMOTE_AGENT_CLAUDE_HISTORY_DIR ?? `${homedir()}/.claude/projects`),
+      // Active Codex sessions only; archived_sessions are not scanned.
+      codex: resolve(env.REMOTE_AGENT_CODEX_HISTORY_DIR ?? `${homedir()}/.codex/sessions`),
     },
   };
 }

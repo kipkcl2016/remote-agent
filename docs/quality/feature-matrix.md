@@ -33,7 +33,7 @@
 | `AGENT-002` | 已实现 | `security.ts`、`adapters/*.ts`、`adapters/process.ts` | `security.test.ts` 覆盖 cwd；`protocol.test.ts` 覆盖输出解析；`codex.test.ts` 覆盖新建/续接 argv；Cursor/Claude 尚缺 argv 快照/真实 spawn 测试 | P | 三种 CLI 各跑一个受控 plan/ask smoke；确认 `shell:false`、固定 argv、越界 cwd 拒绝 |
 | `PERMISSION-001` | 受限实现 | 三个 adapter 的 `buildArgs`、设置开关与 create/resume body | 目前没有直接断言三种模式 argv 的测试 | M | 对每个 Agent 核对 plan/ask/auto 实际参数和写权限；UI 只发送 ask/auto；刷新恢复默认开启 |
 | `AGENT-003` | 已实现 | `ProcessAgentAdapter.launch/cancel`、`GatewayService.stop/record` | `gateway.test.ts` 覆盖完成路径；未覆盖真实 SIGTERM→SIGKILL、spawn error | P | 正常完成、非零退出、stderr、取消、网关停止；确认只产生一个有效终止结果 |
-| `AGENT-004` | 受限实现 | `agent-usage.ts`、`GET /v1/agents/usage`、`Prototype.tsx` Agent Tab 内额度摘要 | `agent-usage.test.ts`：Codex 窗口解析、失败回退与缓存；`gateway.test.ts`：认证路由；`product-flow.spec.ts`：Tab 内真实剩余比例、最紧张窗口和无法获取态 | P | 本机 Codex ChatGPT 登录读取 5 小时/周窗口与重置时间；Codex API key、Claude API/OAuth、Cursor 个人账号回退；额度接口失败时会话同步不受阻；Android/iOS 小屏布局 |
+| `AGENT-004` | 受限实现 | `agent-usage.ts`、`GET /v1/agents/usage`、`Prototype.tsx` Agent Tab 内额度摘要 | `agent-usage.test.ts`：Codex/Cursor 窗口解析、失败回退与缓存；`gateway.test.ts`：认证路由；`product-flow.spec.ts`：Tab 内真实剩余比例、最紧张窗口和无法获取态 | P | 本机 Codex ChatGPT 登录读取 5 小时/周窗口与重置时间；Cursor IDE 登录态读取本月 included 剩余；Claude 未登录/API/无接口回退；额度接口失败时会话同步不受阻；Android/iOS 小屏布局 |
 
 ## 4. 会话与事件
 
@@ -56,7 +56,7 @@
 
 | 功能 ID | 状态 | 实现锚点 | 当前自动化证据 | 覆盖 | 变更后最低人工验收 |
 | --- | --- | --- | --- | --- | --- |
-| `HISTORY-001` | 已实现 | `NativeHistoryService.list/get/snapshot`、`CodexThreadCatalog`、Cursor/Claude scanner、Codex JSONL 生命周期校正与 fallback | `history.test.ts`：三 Agent、白名单外只读可见、Cursor 两代摘要、Codex 运行/完成转换；`codex-threads.test.ts`：桌面标题优先、app-server 状态映射与 15 秒缓存 | A | 真实三种历史目录、app-server 失败、缺目录/坏 JSON、Codex active/archived 分页、超过 24 小时活动任务的保守回退 |
+| `HISTORY-001` | 已实现 | `NativeHistoryService.list/get/snapshot`、`CodexThreadCatalog`、Cursor composerHeaders + chats fallback、Claude scanner、Codex JSONL 生命周期校正与 fallback | `history.test.ts`：三 Agent、白名单外只读可见、Cursor 两代摘要、Codex 运行/完成转换、忽略 archived；`cursor-composers.test.ts`：IDE 标题/归档/多根 cwd；`codex-threads.test.ts`：桌面标题优先、app-server 状态映射与 15 秒缓存 | A | 真实三种历史目录、app-server 失败、缺目录/坏 JSON、Codex 仅活跃分页、超过 24 小时活动任务的保守回退 |
 | `HISTORY-002` | 受限实现 | `messages/snapshot`、Claude/Codex message reader、移动端原生详情轮询、清洗/截断 | `history.test.ts`：Claude/Codex 文本、增量消息与 Cursor 空数组；`gateway.test.ts`：snapshot 运行/完成与新增消息；`product-flow.spec.ts`：原生 Codex 详情增量刷新、运行态禁用输入和终态停止 | P | 用户/助手顺序、工具/system 排除、注入上下文清洗、长文本、Cursor 无正文提示、真实电脑端长任务输出 |
 | `HISTORY-003` | 受限实现 | resume route、`resumeNativeSession`、详情只读 composer、三个 adapter resume argv | `gateway.test.ts`：Codex resume；`codex.test.ts`：非 Git cwd 的 Codex resume argv；`history.test.ts`：Cursor resumable 标记；`product-flow.spec.ts`：列表隐藏来源标签、不可续接详情显示“仅查看”并禁用输入 | P | Claude/Codex/new Cursor 实际续接；old Cursor 409；白名单外/坏 ID 404；只读输入禁用；新网关会话去重 |
 

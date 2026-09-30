@@ -23,7 +23,9 @@ const history = new NativeHistoryService(
   config.allowedRoots,
   new CodexThreadCatalog(),
 );
-const usage = new AgentUsageService();
+const usage = new AgentUsageService({
+  cursorAuthDb: config.historyDirs.cursorComposerDb,
+});
 const server = createGatewayHttpServer({ config, service, pairing, events, history, usage });
 
 server.listen(config.port, config.host, () => {

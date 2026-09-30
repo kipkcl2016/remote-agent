@@ -146,14 +146,14 @@ async function handleGatewayRoute(
         agent: "cursor",
         state: "unavailable",
         windows: [],
-        message: "无法获取额度信息 · Cursor CLI 暂无个人额度接口",
+        message: "无法获取额度信息 · Cursor 未登录或本机无可用凭证",
         updatedAt: now,
       },
       {
         agent: "claude",
         state: "unavailable",
         windows: [],
-        message: "无法获取额度信息 · API 模式没有套餐额度",
+        message: "无法获取额度信息 · API模式",
         updatedAt: now,
       },
       {
@@ -686,12 +686,12 @@ test("[SESSION-002][SESSION-005] tabs and search filter immediately before a ful
   await expect(page.getByTestId("agent-usage-Cursor")).toHaveText("无法获取");
   await expect(page.getByTestId("agent-usage-Cursor")).toHaveAttribute(
     "aria-label",
-    /Cursor CLI 暂无个人额度接口/,
+    /Cursor 未登录或本机无可用凭证/,
   );
-  await expect(page.getByTestId("agent-usage-Claude")).toHaveText("无法获取");
+  await expect(page.getByTestId("agent-usage-Claude")).toHaveText("API模式");
   await expect(page.getByTestId("agent-usage-Claude")).toHaveAttribute(
     "aria-label",
-    /API 模式没有套餐额度/,
+    /API模式/,
   );
   await expect(page.getByTestId("agent-usage-Codex")).toHaveText("余 41%");
   await expect(page.getByTestId("agent-usage-Codex")).toHaveAttribute(
