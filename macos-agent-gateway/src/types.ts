@@ -1,7 +1,7 @@
 export const agentKinds = ["cursor", "claude", "codex"] as const;
 export type AgentKind = (typeof agentKinds)[number];
 
-export const permissionModes = ["plan", "ask", "auto"] as const;
+export const permissionModes = ["plan", "ask", "auto", "full"] as const;
 export type PermissionMode = (typeof permissionModes)[number];
 
 export const sessionStatuses = [

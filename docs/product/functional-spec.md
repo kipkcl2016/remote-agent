@@ -1,8 +1,8 @@
 # Remote Agent 功能规格（功能 SSOT）
 
 > 状态：当前实现基线  
-> 基线日期：2026-08-11  
-> 功能状态、用户流程和可观察行为以本文为准；字段级协议见 [`../reference/protocol-contract.md`](../reference/protocol-contract.md)，验收覆盖见 [`../quality/feature-matrix.md`](../quality/feature-matrix.md)。
+> 基线日期：2026-09-30  
+> 功能状态、用户流程和可观察行为以本文为准；面向使用/验收的完整说明见 [`feature-guide.md`](feature-guide.md)；字段级协议见 [`../reference/protocol-contract.md`](../reference/protocol-contract.md)，验收覆盖见 [`../quality/feature-matrix.md`](../quality/feature-matrix.md)。
 
 ## 1. 产品定位
 
@@ -37,7 +37,7 @@ Remote Agent 让已授权的移动设备在不持有 Agent API 密钥、不接�
 - 用户账号、云端中继、多用户/多 Mac 管理。
 - 文件上传、任意终端、任意 executable/CLI 参数。
 - 公网开箱即用部署、正式签名、应用商店发布或生产级密钥轮换。
-- Cursor 原生消息正文的完整读取。
+- Cursor 原生消息：旧 acp/chats store 正文仍不解析（agent-transcripts 已支持）。
 
 ## 3. 功能目录
 
@@ -59,7 +59,7 @@ Remote Agent 让已授权的移动设备在不持有 Agent API 密钥、不接�
 | --- | --- | --- | --- |
 | `AGENT-001` | 检测受支持 Agent | 受限实现 | 网关通过 PATH 检测 `cursor-agent`、`claude`、`codex` 并读取版本，API 可返回能力；移动端尚未读取此接口，仍会显示全部三个选项 |
 | `AGENT-002` | 安全启动 Agent 子进程 | 已实现 | executable 与参数由 adapter 固定，`shell: false`，cwd 先经过真实路径白名单校验；客户端不能提供命令、参数或环境变量 |
-| `PERMISSION-001` | `plan / ask / auto` 权限模式 | 受限实现 | API 支持三个值；当前 UI 的“默认受限执行”只在 `ask` 与 `auto` 间切换且不持久化。`ask` 在三个短进程 CLI 中等同 plan/只读类模式，不是手机审批 |
+| `PERMISSION-001` | `plan / ask / auto / full` 权限模式 | 受限实现 | API 支持四个值。新建会话表单可显式选择「受限执行 / 自动执行 / 完全允许」（`ask` / `auto` / `full`），默认跟随设置页“默认受限执行”。`ask` 在三个短进程 CLI 中等同 plan/只读；`auto` 为白名单内可写/Smart Auto；`full` 映射 Cursor `--force`、Claude `bypassPermissions`、Codex `danger-full-access`，但仍不能越出 `REMOTE_AGENT_ROOTS`。`ask` 不是手机审批 |
 | `AGENT-003` | Agent 进程生命周期 | 已实现 | 网关记录启动、输出、工具、审批提示、完成和错误事件；支持 SIGTERM 取消，5 秒未退出再 SIGKILL；网关关闭时取消活动进程 |
 | `AGENT-004` | Agent 剩余额度 | 受限实现 | 已认证移动端每 60 秒读取一次网关额度快照；额度摘要集成在 Cursor/Claude/Codex Tab 的第二行，可用时显示最紧张窗口的真实剩余比例，Claude/Codex API 模式显示“API模式”，其余不可用时显示“无法获取”，不再占用独立卡片区域。Codex 在 ChatGPT 登录下通过官方 app-server `account/rateLimits/read` 读取窗口；API Key 登录则显示 API模式。Cursor 通过本机 IDE 登录态调用 Dashboard `GetCurrentPeriodUsage` 读取本月 included 剩余比例；API 模式无套餐额度窗口，不得猜测剩余值。探测失败不得阻塞会话同步，也不得回传账号、密钥或原始上游响应 |
 
@@ -69,7 +69,7 @@ Remote Agent 让已授权的移动设备在不持有 Agent API 密钥、不接�
 | --- | --- | --- | --- |
 | `SESSION-001` | 统一最近会话列表 | 已实现 | 合并网关会话与原生历史；已有 `agent:nativeId` 对应的网关会话会遮蔽同一原生记录，并按 `source + agent + session id` 再次去重。原生历史先按 Agent/项目各保留最近 20 条，移动端最多接收 2,000 条；最近视图只展示最近 20 条，不会因单个高频项目挤掉其他项目 |
 | `SESSION-002` | Agent 筛选与本地搜索 | 已实现 | 支持全部/Cursor/Claude/Codex 筛选；Tab 不显示历史总数，并在 Agent 名称下紧凑显示额度摘要，状态区汇总当前筛选内“进行中”和“已完成 · 未读”。会话行只保留标题、项目和更新时间：运行中显示旋转图标，完成未读显示蓝点，进入详情后清除蓝点，已读完成不显示状态文字或标记。搜索标题、项目目录名、模式标签和 Agent 名，不向网关发搜索请求；“最近 / 项目”切换与搜索入口位于同一标题操作区。首次启用未读能力时既有完成历史作为已读，之后完成且未打开的会话计为未读，打开详情后按服务端持久清除 |
-| `SESSION-003` | 发起新会话 | 已实现 | “新会话”位于进行中/已完成统计同一行右侧，不再遮挡列表；已连接时在全部 Agent Tab、搜索态及最近/项目视图持续显示。Cursor/Claude/Codex Tab 打开表单时默认选中当前 Agent，“全部”沿用最近选择；用户填写任务、绝对工作目录并使用当前默认权限，网关校验输入、持久化会话/用户事件后启动 Agent，移动端进入全屏详情 |
+| `SESSION-003` | 发起新会话 | 已实现 | “新会话”位于进行中/已完成统计同一行右侧，不再遮挡列表；已连接时在全部 Agent Tab、搜索态及最近/项目视图持续显示。Cursor/Claude/Codex Tab 打开表单时默认选中当前 Agent，“全部”沿用最近选择；工作目录可从已同步会话的项目下拉选择（按 `projectId` 去重，展示消歧后的项目名并写入对应 cwd），也可继续手填绝对路径；权限可在表单内选择受限执行 / 自动执行 / 完全允许；网关校验输入、持久化会话/用户事件后启动 Agent，移动端进入全屏详情 |
 | `SESSION-004` | 查看会话详情 | 已实现 | 详情标题栏避开原生系统状态栏，更新时间、状态与分支收进副标题行，不再单独占用内容上方一行。移动端仅在任务活动时约每 1 秒拉取增量内容和最新状态：网关会话读取增量事件，原生 Codex 会话读取最新历史消息；终态再同步一次后停止轮询。用户/助手正文按安全 Markdown（含 GFM）渲染，原始 HTML 不执行；用户问题在滚过其原始位置后吸附于内容区顶部，并紧贴内容区顶边或运行状态条底边，不保留正文卡片间距；长问题默认折叠为两行并可点击展开/收起，切换问题后重新折叠；下一条用户问题到达时以覆盖动画替换，向上滚动时以反向覆盖恢复对应的上一条；系统启用“减少动态效果”时关闭该动画。用户查看旧内容时新增输出不强制拉回底部。工具调用、审批提示和终止错误单独展示；CLI `stderr` 作为可展开的诊断日志合并展示，默认折叠 |
 | `SESSION-005` | 继续网关会话 | 已实现 | 仅当移动端看到已完成/失败（取消当前映射为完成）且已有 `nativeId` 时允许继续；沿用原会话权限模式和 cwd |
 | `SESSION-006` | 取消运行中会话 | 受限实现 | 网关 API 已实现取消活动进程并持久化 `cancelled`；移动端尚无取消按钮，取消态当前显示为“已完成” |
@@ -85,7 +85,7 @@ Remote Agent 让已授权的移动设备在不持有 Agent API 密钥、不接�
 | 功能 ID | 功能 | 状态 | 当前行为与边界 |
 | --- | --- | --- | --- |
 | `HISTORY-001` | 扫描原生会话摘要 | 已实现 | Cursor 优先读取 IDE `composerHeaders`（与侧栏标题/归档一致），缺库时回退 chats/acp；Claude 扫描本机历史；Codex 使用官方 app-server `thread/list`（仅活跃会话，不含 archived）取得与桌面端一致的 `thread.name`，并以最近 24 小时 rollout 的生命周期事件校正跨进程 `notLoaded` 状态，失败时回退 `~/.codex/sessions` JSONL。所有 cwd 的历史均可见，白名单外记录标记为只读，不能从手机续接或启动 Agent |
-| `HISTORY-002` | 查看原生历史消息 | 受限实现 | Claude/Codex 只返回用户和助手文本，剔除已知注入上下文并截断过长文本；运行中的原生 Codex 详情约每秒重读最新消息并在终态后停止，属于近实时轮询而非 SSE 推送；Cursor 当前只返回空消息数组 |
+| `HISTORY-002` | 查看原生历史消息 | 受限实现 | Claude/Codex/Cursor 均返回用户和助手文本（剔除工具块与已知注入上下文，截断过长文本）。Cursor 从 `~/.cursor/projects/*/agent-transcripts/<id>/<id>.jsonl` 读取，并剥离 `<user_query>` / `<timestamp>` 包装。运行中的原生 Codex 详情约每秒重读最新消息并在终态后停止，属于近实时轮询而非 SSE 推送；缺 transcript 的旧 Cursor 记录仍为空 |
 | `HISTORY-003` | 续接原生会话 | 受限实现 | Claude、Codex 和新版 Cursor Glass/composer 会话可续接；旧 Cursor `acp-sessions` 和白名单外记录只读。列表不再占用一行显示“原生历史 / 只读记录”；不可续接时详情底部输入框显示“仅查看”并保持禁用。续接后创建一个新的网关会话承载事件 |
 
 ### 3.5 移动运行时、设置与交付
@@ -126,7 +126,7 @@ Remote Agent 让已授权的移动设备在不持有 Agent API 密钥、不接�
 
 ### 4.3 新建会话
 
-1. 用户输入非空 prompt、Mac 上存在的绝对 cwd、Agent 和默认权限。
+1. 用户输入非空 prompt、选择已有项目或填写 Mac 上存在的绝对 cwd、Agent 和默认权限。
 2. 网关再次验证 agent、permission、长度和 cwd；前端校验不能替代网关校验。
 3. 网关先创建 `queued` 会话和用户事件，再切到 `running` 并启动固定 adapter。
 4. 移动端关闭 sheet，进入全屏详情并增量读取输出。
@@ -161,7 +161,7 @@ Remote Agent 让已授权的移动设备在不持有 Agent API 密钥、不接�
 ### 5.1 统一枚举
 
 - Agent：`cursor | claude | codex`
-- 权限：`plan | ask | auto`
+- 权限：`plan | ask | auto | full`
 - 会话：`queued | running | waiting_approval | completed | failed | cancelled`
 - 事件：`status | output | tool | approval | completed | error`
 
@@ -218,5 +218,6 @@ Remote Agent 让已授权的移动设备在不持有 Agent API 密钥、不接�
 6. 完成生产 TLS、审计脱敏、依赖扫描、正式签名和密钥轮换。
 7. 连接中断后可靠切换离线并支持恢复；会话合并改用原始 `updatedAt` 精确排序。
 8. 新会话 sheet 的 Mac 名称改为实际 hostname，并修正只读原生历史空态中“可继续”的误导文案。
+9. 设置项（默认受限执行、通知）持久化到安全存储或本机偏好。
 
-实现任一缺口时，应先把对应功能状态和验收标准改为目标行为，再修改代码；若引入新能力，分配新的稳定功能 ID，已发布 ID 不复用。
+实现任一缺口时，应先把对应功能状态和验收标准改为目标行为，再修改代码；若引入新能力，分配新的稳定功能 ID，已发布 ID 不复用。同步更新 [`feature-guide.md`](feature-guide.md) 中面向人的说明。

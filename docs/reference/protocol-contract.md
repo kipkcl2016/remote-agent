@@ -27,7 +27,8 @@
 | --- | --- | --- | --- | --- |
 | `plan` | `--plan` | `--permission-mode plan` | `sandbox_mode=read-only` | 规划/只读类执行 |
 | `ask` | `--plan` | `--permission-mode plan` | `sandbox_mode=read-only` | 当前与受限模式同义；等待未来逐工具审批协议 |
-| `auto` | `--auto-review` | `--permission-mode acceptEdits` | `sandbox_mode=workspace-write` | 可在已校验的白名单 cwd 内写入 |
+| `auto` | `--auto-review` | `--permission-mode acceptEdits` | `sandbox_mode=workspace-write` | 可在已校验的白名单 cwd 内写入；Cursor 为 Smart Auto |
+| `full` | `--force` | `--permission-mode bypassPermissions` + `--allow-dangerously-skip-permissions` | `sandbox_mode=danger-full-access` | 完全允许：自动批准工具/命令；启动 cwd 仍必须通过 `REMOTE_AGENT_ROOTS` |
 
 共同约束：
 
@@ -105,7 +106,7 @@ type GatewaySession = {
   cwd: string;
   projectId?: string;
   projectName?: string;
-  permissionMode: "plan" | "ask" | "auto";
+  permissionMode: "plan" | "ask" | "auto" | "full";
   status: "queued" | "running" | "waiting_approval" | "completed" | "failed" | "cancelled";
   createdAt: string;
   updatedAt: string;
@@ -163,7 +164,7 @@ type AgentAvailability = {
   installed: boolean;
   version?: string;
   supportsNativeHistory: boolean;
-  permissionModes: Array<"plan" | "ask" | "auto">;
+  permissionModes: Array<"plan" | "ask" | "auto" | "full">;
 };
 ```
 
@@ -316,8 +317,8 @@ data: <完整 SessionEvent JSON>
 - 历史列表不按 cwd 隐藏；网关将白名单外记录规范化为 `resumable=false`。`limit` 最大 2,000，`perProjectLimit` 默认 20、最大 100，按 Agent + 项目分别计数。
 - 文件缺失、权限不足、单行 JSON 无效时跳过对应文件/行，而不是使整个列表失败。
 - list/get/messages 允许读取白名单外本机历史；resume 和所有启动 Agent 的路径必须再次应用 allowed roots，不能依赖客户端传入的 `resumable`。
-- Cursor 摘要优先读取 IDE `state.vscdb` 的 `composerHeaders`（与 Workspaces 侧栏同一索引）：使用 `name` 作为标题，跳过 archived / draft / subagent；多根工作区从 `.code-workspace` 解析首个 folder 作为 cwd。Glass/composer 会话默认 `resumable=true`（`cursor-agent --resume <id>`），cwd 未通过白名单时仍会被规范化为只读。Composer DB 不可用时回退扫描 `acp-sessions`（只读）+ `chats`（可续接）的 `meta.json`。Cursor messages 当前仍为空。
-- Cursor 的 `acp-sessions/store.db` 和 `chats/*/*/store.db` 消息正文仍不解析；仅读取 `composerHeaders` 索引字段与 `meta.json` 摘要。
+- Cursor 摘要优先读取 IDE `state.vscdb` 的 `composerHeaders`（与 Workspaces 侧栏同一索引）：使用 `name` 作为标题，跳过 archived / draft / subagent；多根工作区从 `.code-workspace` 解析首个 folder 作为 cwd。Glass/composer 会话默认 `resumable=true`（`cursor-agent --resume <id>`），cwd 未通过白名单时仍会被规范化为只读。Composer DB 不可用时回退扫描 `acp-sessions`（只读）+ `chats`（可续接）的 `meta.json`。Cursor 正文从 `~/.cursor/projects/*/agent-transcripts/<id>/<id>.jsonl` 读取用户/助手文本（忽略 tool_use）；找不到 transcript 时消息为空。
+- Cursor 的 `acp-sessions/store.db` 和 `chats/*/*/store.db` 消息正文仍不解析；仅读取 `composerHeaders` 索引字段、`meta.json` 摘要与 agent-transcripts JSONL。
 
 ## 9. 环境变量合同
 
@@ -333,6 +334,7 @@ data: <完整 SessionEvent JSON>
 | `REMOTE_AGENT_CURSOR_HISTORY_DIR` | `~/.cursor/acp-sessions` | Cursor 旧历史 |
 | `REMOTE_AGENT_CURSOR_CHATS_HISTORY_DIR` | `~/.cursor/chats` | Cursor chats store（用于可续接标记） |
 | `REMOTE_AGENT_CURSOR_COMPOSER_DB` | `~/Library/Application Support/Cursor/User/globalStorage/state.vscdb` | Cursor IDE 会话索引（标题/归档） |
+| `REMOTE_AGENT_CURSOR_TRANSCRIPTS_DIR` | `~/.cursor/projects` | Cursor agent-transcripts 根目录（正文） |
 | `REMOTE_AGENT_CLAUDE_HISTORY_DIR` | `~/.claude/projects` | Claude 历史 |
 | `REMOTE_AGENT_CODEX_HISTORY_DIR` | `~/.codex/sessions` | Codex 活跃历史（不含归档） |
 | `VITE_REMOTE_AGENT_URL` | 空 | Web 初始网关 URL；不能承载 token |

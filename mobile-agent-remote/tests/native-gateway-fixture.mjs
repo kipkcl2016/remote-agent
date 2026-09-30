@@ -157,7 +157,10 @@ function createSession(gateway, body) {
     cwd,
     projectId: `project-${gateway.port}`,
     projectName,
-    permissionMode: body.permissionMode === "auto" ? "auto" : "ask",
+    permissionMode:
+      body.permissionMode === "full" || body.permissionMode === "auto" || body.permissionMode === "plan"
+        ? body.permissionMode
+        : "ask",
     status: "completed",
     createdAt: timestamp,
     updatedAt: timestamp,

@@ -1,12 +1,13 @@
 # Remote Agent 文档中心
 
-> 本目录是产品功能、跨端契约、安全边界和质量验收的文档入口。当前基线日期：**2026-08-10**。
+> 本目录是产品功能、跨端契约、安全边界和质量验收的文档入口。功能说明基线日期：**2026-09-30**。
 
 ## 从哪里开始
 
 | 任务 | 必读文档 | 文档职责 |
 | --- | --- | --- |
-| 理解产品现状 | [`product/functional-spec.md`](product/functional-spec.md) | 功能范围、状态、用户流程、业务规则；**功能 SSOT** |
+| 了解当前能做什么 | [`product/feature-guide.md`](product/feature-guide.md) | 面向使用/验收的完整功能说明，与现网行为对齐 |
+| 理解产品现状与功能状态 | [`product/functional-spec.md`](product/functional-spec.md) | 功能范围、状态、用户流程、业务规则；**功能 SSOT** |
 | 改 HTTP、SSE、状态或 Agent adapter | [`reference/protocol-contract.md`](reference/protocol-contract.md) | 枚举、权限映射、API、事件、输入限制；**跨端契约 SSOT** |
 | 改模块关系、数据流或持久化 | [`architecture.md`](architecture.md) | 系统边界、组件职责和数据流；**架构 SSOT** |
 | 改认证、网络、凭据、目录或进程权限 | [`security.md`](security.md) | 威胁边界、部署要求和上线门槛；**安全 SSOT** |
@@ -22,6 +23,7 @@
 “SSOT”表示某类决策的唯一规范来源，不表示一份文档复制所有细节：
 
 - 产品是否应该有某功能、功能状态和用户可观察行为，以 `product/functional-spec.md` 为准。
+- `product/feature-guide.md` 是面向人阅读的完整功能说明，必须与功能规格和当前实现保持一致；若冲突，以功能规格为准并修正说明文档。
 - 线上传输字段、枚举、HTTP/SSE 行为和 Agent 权限映射，以 `reference/protocol-contract.md` 为准。
 - 安全约束以 `security.md` 为准。其他文档与其冲突时，执行更严格的安全要求并修正文档冲突。
 - 组件归属和依赖方向以 `architecture.md` 为准。

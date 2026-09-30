@@ -35,7 +35,7 @@ class FakeCodexAdapter implements AgentAdapter {
       installed: true,
       version: "test",
       supportsNativeHistory: true,
-      permissionModes: ["plan", "ask", "auto"],
+      permissionModes: ["plan", "ask", "auto", "full"],
     };
   }
 
@@ -69,6 +69,7 @@ test("gateway pairs a device and serves the session lifecycle", async () => {
     cursor: join(root, "cursor"),
     cursorChats: join(root, "cursor-chats"),
     cursorComposerDb: join(root, "missing-state.vscdb"),
+    cursorTranscripts: join(root, "cursor-transcripts"),
     claude: join(root, "claude"),
     codex: join(root, "codex"),
   };

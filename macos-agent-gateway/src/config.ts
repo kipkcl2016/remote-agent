@@ -13,6 +13,7 @@ export type GatewayConfig = {
     cursor: string;
     cursorChats: string;
     cursorComposerDb: string;
+    cursorTranscripts: string;
     claude: string;
     codex: string;
   };
@@ -50,6 +51,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig 
       cursorComposerDb: resolve(
         env.REMOTE_AGENT_CURSOR_COMPOSER_DB ??
           `${homedir()}/Library/Application Support/Cursor/User/globalStorage/state.vscdb`,
+      ),
+      cursorTranscripts: resolve(
+        env.REMOTE_AGENT_CURSOR_TRANSCRIPTS_DIR ?? `${homedir()}/.cursor/projects`,
       ),
       claude: resolve(env.REMOTE_AGENT_CLAUDE_HISTORY_DIR ?? `${homedir()}/.claude/projects`),
       // Active Codex sessions only; archived_sessions are not scanned.

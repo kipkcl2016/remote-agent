@@ -12,6 +12,7 @@ test("native history shows disallowed directories as browse-only", async () => {
     cursor: join(root, "cursor"),
     cursorChats: join(root, "cursor-chats"),
     cursorComposerDb: join(root, "missing-state.vscdb"),
+    cursorTranscripts: join(root, "cursor-transcripts"),
     claude: join(root, "claude"),
     codex: join(root, "codex"),
   };
@@ -133,6 +134,53 @@ test("native history shows disallowed directories as browse-only", async () => {
     ].join("\n"));
     assert.equal((await service.snapshot("codex", "codex-session"))?.session.status, "completed");
     assert.deepEqual(await service.messages("cursor", "cursor-session"), []);
+
+    const transcriptId = "11111111-1111-4111-8111-111111111111";
+    mkdirSync(
+      join(dirs.cursorTranscripts, "proj", "agent-transcripts", transcriptId),
+      { recursive: true },
+    );
+    writeFileSync(
+      join(dirs.cursorTranscripts, "proj", "agent-transcripts", transcriptId, `${transcriptId}.jsonl`),
+      [
+        JSON.stringify({
+          role: "user",
+          message: {
+            content: [{
+              type: "text",
+              text: "<timestamp>now</timestamp>\n<user_query>\nCursor transcript task\n</user_query>",
+            }],
+          },
+        }),
+        JSON.stringify({
+          role: "assistant",
+          message: {
+            content: [
+              { type: "text", text: "Working on it." },
+              { type: "tool_use", name: "Shell", input: { command: "ls" } },
+            ],
+          },
+        }),
+        JSON.stringify({ role: "assistant", message: { content: [{ type: "tool_use", name: "Read" }] } }),
+        JSON.stringify({ role: "turn_ended" }),
+        "",
+      ].join("\n"),
+    );
+    mkdirSync(join(dirs.cursorChats, "workspace", transcriptId), { recursive: true });
+    writeFileSync(
+      join(dirs.cursorChats, "workspace", transcriptId, "meta.json"),
+      JSON.stringify({ cwd: root, title: "Cursor transcript task" }),
+    );
+    assert.deepEqual(
+      (await service.messages("cursor", transcriptId))?.map((message) => ({
+        role: message.role,
+        text: message.text,
+      })),
+      [
+        { role: "user", text: "Cursor transcript task" },
+        { role: "assistant", text: "Working on it." },
+      ],
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
     rmSync(outside, { recursive: true, force: true });
@@ -146,6 +194,7 @@ test("native history ignores Codex archived sessions", async () => {
     cursor: join(root, "cursor"),
     cursorChats: join(root, "cursor-chats"),
     cursorComposerDb: join(root, "missing-state.vscdb"),
+    cursorTranscripts: join(root, "cursor-transcripts"),
     claude: join(root, "claude"),
     codex: join(root, "codex"),
   };
@@ -204,6 +253,7 @@ test("native history caps each Agent project independently", async () => {
     cursor: join(root, "cursor"),
     cursorChats: join(root, "cursor-chats"),
     cursorComposerDb: join(root, "missing-state.vscdb"),
+    cursorTranscripts: join(root, "cursor-transcripts"),
     claude: join(root, "claude"),
     codex: join(root, "codex"),
   };

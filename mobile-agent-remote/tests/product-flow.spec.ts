@@ -12,7 +12,7 @@ type MockSession = {
   cwd: string;
   projectId?: string;
   projectName?: string;
-  permissionMode: "plan" | "ask" | "auto";
+  permissionMode: "plan" | "ask" | "auto" | "full";
   status: "queued" | "running" | "waiting_approval" | "completed" | "failed" | "cancelled";
   createdAt: string;
   updatedAt: string;
@@ -269,14 +269,19 @@ async function handleGatewayRoute(
   }
 
   if (method === "POST" && path === "/v1/sessions") {
-    const body = request.postDataJSON() as { agent: MockSession["agent"]; prompt: string; cwd: string };
+    const body = request.postDataJSON() as {
+      agent: MockSession["agent"];
+      prompt: string;
+      cwd: string;
+      permissionMode?: MockSession["permissionMode"];
+    };
     const created: MockSession = {
       id: "new-session",
       nativeId: "new-native",
       agent: body.agent,
       title: body.prompt,
       cwd: body.cwd,
-      permissionMode: "ask",
+      permissionMode: body.permissionMode ?? "ask",
       status: "running",
       createdAt: now,
       updatedAt: now,
@@ -1025,15 +1030,24 @@ test("[FILE-001] session files use type-aware previews and authenticated export"
 });
 
 test("[SESSION-003][SESSION-004] creating a session opens live output with diagnostics collapsed", async ({ page }) => {
-  await installConnectedGateway(page);
+  const gateway = await installConnectedGateway(page);
   await page.goto("/");
   await expect(page.getByText("TestMac.local")).toBeVisible();
 
   await page.getByTestId("new-session").click();
+  await expect(page.getByTestId("new-session-project")).toBeVisible();
+  await page.getByTestId("new-session-project").selectOption("project-mq");
+  await expect(page.getByTestId("working-directory")).toHaveValue("/Users/test/Projects/mq-worker");
+  await page.getByTestId("new-session-project").selectOption("project-auth");
+  await expect(page.getByTestId("working-directory")).toHaveValue("/Users/test/Projects/auth-service");
+  await expect(page.getByTestId("permission-ask")).toHaveAttribute("aria-pressed", "true");
+  await page.getByTestId("permission-full").click();
+  await expect(page.getByTestId("permission-full")).toHaveAttribute("aria-pressed", "true");
   await page.getByTestId("new-session-prompt").fill("检查移动端连接");
   await page.locator(".sheet-primary", { hasText: "启动会话" }).evaluate((button: HTMLButtonElement) => button.click());
 
   await expect(page.getByTestId("session-detail")).toBeVisible();
+  expect(gateway.sessions[0]?.permissionMode).toBe("full");
   await expect(page.getByTestId("session-stream")).toContainText("正在分析项目结构", { timeout: 5_000 });
   await expect(page.getByTestId("session-stream").getByRole("heading", { name: "分析结果" })).toBeVisible();
   await expect(page.getByTestId("session-stream").locator("strong", { hasText: "正在分析" })).toBeVisible();

@@ -34,10 +34,11 @@
 
 - Web 联调版仍把设备令牌放在 `localStorage`，不要把 Web 版用于不受信任的共享浏览器。
 - 多连接升级会在首次成功读取后把旧版单 URL/token 原子迁移到版本化连接库；写入新库失败时保留旧凭据，避免凭据丢失。
-- Cursor 的 `acp-sessions/store.db` 和 `chats/*/*/store.db` 是内部内容寻址结构；网关不解析其中的消息正文。Cursor 列表现优先读取 IDE `state.vscdb` 的 `composerHeaders` 索引（标题、归档状态、工作区路径），并用 `~/.cursor/chats/*/meta.json` 判断是否可续接；Composer DB 不可用时才回退 `meta.json` 扫描。旧版 `acp-sessions` 在回退路径下保持只读。
+- Cursor 的 `acp-sessions/store.db` 和 `chats/*/*/store.db` 是内部内容寻址结构；网关不解析其中的消息正文。Cursor 列表现优先读取 IDE `state.vscdb` 的 `composerHeaders` 索引（标题、归档状态、工作区路径）；Glass/composer 会话默认可续接（仍受白名单约束）。正文从 `~/.cursor/projects/*/agent-transcripts` 的 JSONL 读取用户/助手文本。Composer DB 不可用时才回退 `meta.json` 扫描；旧版 `acp-sessions` 在回退路径下保持只读。
 - Claude/Codex 原生 JSONL 只规范化用户与助手文本，工具的完整参数不会作为历史消息返回。
 - 实时事件当前会把部分 CLI 工具 input 和 approval 原始对象写入 SQLite 并返回已认证移动端，尚未建立独立字段白名单、脱敏和大小限制；不要把现有事件库用于高敏感会话。
 - `ask` 模式仍以非交互式受限执行代替逐工具审批；需要长期 Agent 协议后才能提供手机端逐项批准。
+- `full`（完全允许）会放宽 CLI 侧工具/命令确认（Cursor `--force`、Claude bypass、Codex danger-full-access），但仍不能绕过 `REMOTE_AGENT_ROOTS` 工作目录白名单；只适用于受信任内测场景。
 - 内测包尚未接入 APNs/FCM、锁屏隐私控制与应用商店签名流程。
 - 文件预览通过当前设备 Bearer token 按需读取，不做离线持久缓存；普通 HTTP 局域网连接上的文件内容不具备链路加密，仍只适用于受控内测。
 

@@ -107,6 +107,7 @@ test("Cursor history prefers IDE composerHeaders titles and skips archived", asy
     cursor: join(root, "cursor"),
     cursorChats: join(root, "cursor-chats"),
     cursorComposerDb: dbPath,
+    cursorTranscripts: join(root, "cursor-transcripts"),
     claude: join(root, "claude"),
     codex: join(root, "codex"),
   };

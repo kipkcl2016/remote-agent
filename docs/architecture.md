@@ -32,14 +32,14 @@ macOS 网关负责认证、目录白名单、统一会话模型、Agent 进程�
 [`reference/protocol-contract.md`](reference/protocol-contract.md) 为准。
 
 - Agent：`cursor | claude | codex`
-- 权限：`plan | ask | auto`
+- 权限：`plan | ask | auto | full`
 - 会话状态：`queued | running | waiting_approval | completed | failed | cancelled`
 - 事件：`status | output | tool | approval | completed | error`
 - 原生历史：统一为 `id / agent / title / cwd / updatedAt / status? / resumable`
 - 项目标识：会话可附带 `projectId / projectName`；网关优先识别 Git 根目录，移动端用其跨 Agent 分组
 - 历史消息：统一为 `id / role / text / createdAt`
 
-`ask` 在当前非交互式 CLI 适配器中采用受限执行：Cursor/Claude 进入 plan 类模式，Codex 使用只读沙箱。完整的“手机批准单个工具调用后继续”需要下一阶段接入各 Agent 的长期运行协议，而不是放宽当前 CLI 权限。
+`ask` 在当前非交互式 CLI 适配器中采用受限执行：Cursor/Claude 进入 plan 类模式，Codex 使用只读沙箱。`full` 映射为 Cursor `--force`、Claude `bypassPermissions`、Codex `danger-full-access`，仍受白名单 cwd 约束。完整的“手机批准单个工具调用后继续”需要下一阶段接入各 Agent 的长期运行协议。
 
 ## HTTP API
 

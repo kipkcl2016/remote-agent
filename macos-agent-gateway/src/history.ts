@@ -1,5 +1,6 @@
 import {
   closeSync,
+  existsSync,
   openSync,
   readFileSync,
   readSync,
@@ -74,12 +75,9 @@ export class NativeHistoryService {
   ): Promise<NativeHistoryMessage[] | undefined> {
     const session = await this.get(agent, id);
     if (!session) return undefined;
-    if (agent === "cursor") return [];
-    const path = agent === "claude"
-      ? findClaudePath(this.dirs.claude, id)
-      : findCodexPath([this.dirs.codex], id);
+    const path = resolveNativeMessagePath(agent, id, this.dirs);
     if (!path) return [];
-    const messages = agent === "claude" ? readClaudeMessages(path) : readCodexMessages(path);
+    const messages = readNativeMessages(agent, path);
     return messages.slice(-Math.max(1, Math.min(limit, 500)));
   }
 
@@ -90,12 +88,9 @@ export class NativeHistoryService {
   ): Promise<{ session: NativeHistorySession; messages: NativeHistoryMessage[] } | undefined> {
     const session = await this.get(agent, id);
     if (!session) return undefined;
-    if (agent === "cursor") return { session, messages: [] };
-    const path = agent === "claude"
-      ? findClaudePath(this.dirs.claude, id)
-      : findCodexPath([this.dirs.codex], id);
+    const path = resolveNativeMessagePath(agent, id, this.dirs);
     if (!path) return { session, messages: [] };
-    const messages = agent === "claude" ? readClaudeMessages(path) : readCodexMessages(path);
+    const messages = readNativeMessages(agent, path);
     return {
       session,
       messages: messages.slice(-Math.max(1, Math.min(limit, 500))),
@@ -403,8 +398,43 @@ function readJsonLinesWindow(path: string): Record<string, unknown>[] {
   }
 }
 
+function resolveNativeMessagePath(
+  agent: AgentKind,
+  id: string,
+  dirs: GatewayConfig["historyDirs"],
+): string | undefined {
+  if (agent === "cursor") return findCursorTranscriptPath(dirs.cursorTranscripts, id);
+  if (agent === "claude") return findClaudePath(dirs.claude, id);
+  return findCodexPath([dirs.codex], id);
+}
+
+function readNativeMessages(agent: AgentKind, path: string): NativeHistoryMessage[] {
+  if (agent === "cursor") return readCursorMessages(path);
+  if (agent === "claude") return readClaudeMessages(path);
+  return readCodexMessages(path);
+}
+
 function findClaudePath(root: string, id: string): string | undefined {
   return walkFiles(root, ".jsonl").find((path) => basename(path, ".jsonl") === id);
+}
+
+function findCursorTranscriptPath(root: string, id: string): string | undefined {
+  if (!isSafeSessionId(id) || !root || !existsSync(root)) return undefined;
+  const direct = join(root, "agent-transcripts", id, `${id}.jsonl`);
+  if (existsSync(direct)) return direct;
+  for (const project of safeDirectories(root)) {
+    const preferred = join(root, project.name, "agent-transcripts", id, `${id}.jsonl`);
+    if (existsSync(preferred)) return preferred;
+    const folder = join(root, project.name, "agent-transcripts", id);
+    if (!existsSync(folder)) continue;
+    try {
+      const match = readdirSync(folder).find((name) => name.endsWith(".jsonl"));
+      if (match) return join(folder, match);
+    } catch {
+      // Ignore unreadable project transcript folders.
+    }
+  }
+  return undefined;
 }
 
 function findCodexPath(roots: string[], id: string): string | undefined {
@@ -417,6 +447,25 @@ function findCodexPath(roots: string[], id: string): string | undefined {
     }
   }
   return undefined;
+}
+
+function readCursorMessages(path: string): NativeHistoryMessage[] {
+  return readJsonLinesWindow(path).flatMap((row, index) => {
+    const role = row.role === "user" || row.role === "assistant"
+      ? row.role
+      : undefined;
+    if (!role) return [];
+    const message = readRecord(row.message) ?? row;
+    const text = cleanCursorMessageText(readMessageContent(message.content), role);
+    if (!text) return [];
+    const createdAt = readIsoDate(row.timestamp) ?? readIsoDate(message.timestamp);
+    return [{
+      id: readString(row.uuid) ?? readString(message.id) ?? `cursor-${index}`,
+      role,
+      text,
+      ...(createdAt ? { createdAt } : {}),
+    }];
+  });
 }
 
 function readClaudeMessages(path: string): NativeHistoryMessage[] {
@@ -460,6 +509,19 @@ function readMessageContent(value: unknown): string {
     const record = readRecord(item);
     return record?.type === "text" && typeof record.text === "string" ? [record.text] : [];
   }).join("\n");
+}
+
+function cleanCursorMessageText(value: string, role: "user" | "assistant"): string {
+  let text = value;
+  if (role === "user") {
+    const query = text.match(/<user_query>\s*([\s\S]*?)\s*<\/user_query>/i);
+    if (query?.[1]) text = query[1];
+    text = text
+      .replace(/<timestamp\b[^>]*>[\s\S]*?<\/timestamp>/gi, " ")
+      .replace(/<\/?user_query>/gi, " ")
+      .trim();
+  }
+  return cleanMessageText(text);
 }
 
 function cleanMessageText(value: string): string {

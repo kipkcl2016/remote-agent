@@ -32,7 +32,6 @@ import {
   TbRefresh,
   TbSearch,
   TbSettings,
-  TbShieldCheck,
   TbTerminal2,
   TbWifiOff,
   TbX,
@@ -61,6 +60,17 @@ type AgentName = "Cursor" | "Claude" | "Codex";
 type SessionStatus = "running" | "attention" | "done" | "failed";
 type SessionView = "recent" | "projects";
 type SessionSyncState = "idle" | "loading" | "refreshing" | "fresh" | "stale" | "error";
+type PermissionMode = "plan" | "ask" | "auto" | "full";
+
+const permissionChoices: Array<{
+  id: Exclude<PermissionMode, "plan">;
+  title: string;
+  description: string;
+}> = [
+  { id: "ask", title: "受限执行", description: "规划或只读" },
+  { id: "auto", title: "自动执行", description: "白名单内可写" },
+  { id: "full", title: "完全允许", description: "自动批准工具" },
+];
 
 type AgentSession = {
   id: string;
@@ -319,6 +329,7 @@ export default function Prototype() {
   const [fileExporting, setFileExporting] = useState(false);
   const [draft, setDraft] = useState("");
   const [draftAgent, setDraftAgent] = useState<AgentName>("Codex");
+  const [draftPermissionMode, setDraftPermissionMode] = useState<Exclude<PermissionMode, "plan">>("ask");
   const [detailReply, setDetailReply] = useState("");
   const [alwaysConfirm, setAlwaysConfirm] = useState(true);
   const [notifications, setNotifications] = useState(true);
@@ -519,6 +530,26 @@ export default function Prototype() {
     return [...grouped.values()];
   }, [visibleSessions]);
 
+  const knownProjects = useMemo(() => {
+    const byId = new Map<string, { id: string; name: string; cwd: string }>();
+    for (const session of sessions) {
+      const cwd = session.cwd.trim();
+      if (!cwd || byId.has(session.projectId)) continue;
+      byId.set(session.projectId, {
+        id: session.projectId,
+        name: session.project,
+        cwd,
+      });
+    }
+    return [...byId.values()];
+  }, [sessions]);
+
+  const selectedProjectId = useMemo(() => {
+    const cwd = workingDirectory.trim();
+    if (!cwd) return "";
+    return knownProjects.find((project) => project.cwd === cwd)?.id ?? "__custom__";
+  }, [knownProjects, workingDirectory]);
+
   const statusSummary = useMemo(() => ({
     running: visibleSessions.filter(
       (session) => session.status === "running" || session.status === "attention",
@@ -577,6 +608,7 @@ export default function Prototype() {
   const openNewSession = () => {
     keyboard.hide();
     if (filter !== "全部") setDraftAgent(filter);
+    setDraftPermissionMode(alwaysConfirm ? "ask" : "auto");
     setNewSessionOpen(true);
   };
 
@@ -616,8 +648,9 @@ export default function Prototype() {
     }
     keyboard.hide();
     setWorkingDirectory(cwd);
+    setDraftPermissionMode(alwaysConfirm ? "ask" : "auto");
     setNewSessionOpen(true);
-  }, [keyboard, remoteOnline]);
+  }, [alwaysConfirm, keyboard, remoteOnline]);
 
   const releaseFilePreviewUrl = useCallback(() => {
     if (!filePreviewObjectUrlRef.current) return;
@@ -1139,7 +1172,7 @@ export default function Prototype() {
           agent: agentToKind(draftAgent),
           prompt: title,
           cwd: workingDirectory.trim(),
-          permissionMode: alwaysConfirm ? "ask" : "auto",
+          permissionMode: draftPermissionMode,
         },
       });
       const mapped = mapGatewaySession(created);
@@ -1608,6 +1641,30 @@ export default function Prototype() {
           />
           {remoteOnline ? (
             <>
+              {knownProjects.length > 0 ? (
+                <>
+                  <label htmlFor="new-session-project">项目</label>
+                  <select
+                    id="new-session-project"
+                    value={selectedProjectId}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      if (value === "" || value === "__custom__") return;
+                      const project = knownProjects.find((item) => item.id === value);
+                      if (project) setWorkingDirectory(project.cwd);
+                    }}
+                    data-testid="new-session-project"
+                  >
+                    <option value="">选择已有项目…</option>
+                    {knownProjects.map((project) => (
+                      <option key={project.id} value={project.id}>
+                        {project.name}
+                      </option>
+                    ))}
+                    <option value="__custom__">手动输入路径…</option>
+                  </select>
+                </>
+              ) : null}
               <label htmlFor="working-directory">Mac 工作目录</label>
               <KeyboardInput
                 id="working-directory"
@@ -1633,12 +1690,21 @@ export default function Prototype() {
               </button>
             ))}
           </div>
-          <div className="execution-mode">
-            <TbShieldCheck aria-hidden="true" />
-            <span>
-              <strong>{alwaysConfirm ? "受限执行" : "自动执行"}</strong>
-              <small>{alwaysConfirm ? "默认以规划或只读模式运行" : "允许 Agent 在白名单目录内写入"}</small>
-            </span>
+          <span className="field-caption">权限</span>
+          <div className="sheet-permission-picker" aria-label="选择权限" data-testid="new-session-permission">
+            {permissionChoices.map((choice) => (
+              <button
+                key={choice.id}
+                type="button"
+                className={draftPermissionMode === choice.id ? "is-selected" : ""}
+                onClick={() => setDraftPermissionMode(choice.id)}
+                aria-pressed={draftPermissionMode === choice.id}
+                data-testid={`permission-${choice.id}`}
+              >
+                <strong>{choice.title}</strong>
+                <small>{choice.description}</small>
+              </button>
+            ))}
           </div>
           <button className="sheet-primary" type="button" onClick={createSession}>
             {connectionBusy ? "正在启动…" : "启动会话"}
@@ -2461,7 +2527,7 @@ type GatewaySessionApi = {
   cwd: string;
   projectId?: string;
   projectName?: string;
-  permissionMode: "plan" | "ask" | "auto";
+  permissionMode: "plan" | "ask" | "auto" | "full";
   status: "queued" | "running" | "waiting_approval" | "completed" | "failed" | "cancelled";
   createdAt: string;
   updatedAt: string;
@@ -2790,7 +2856,13 @@ function mapGatewaySession(session: GatewaySessionApi): AgentSession {
     agent: kindToAgent(session.agent),
     title: session.title,
     project: session.projectName ?? projectFromCwd(session.cwd),
-    branch: session.permissionMode === "plan" ? "规划模式" : session.permissionMode === "auto" ? "自动执行" : "受限执行",
+    branch: session.permissionMode === "plan"
+      ? "规划模式"
+      : session.permissionMode === "auto"
+        ? "自动执行"
+        : session.permissionMode === "full"
+          ? "完全允许"
+          : "受限执行",
     status: session.status === "failed"
       ? "failed"
       : session.status === "waiting_approval"

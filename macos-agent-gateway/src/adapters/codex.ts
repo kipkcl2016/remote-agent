@@ -2,7 +2,12 @@ import { ProcessAgentAdapter } from "./process.js";
 import type { AdapterLaunchRequest } from "../types.js";
 
 export function buildCodexArgs(request: AdapterLaunchRequest): string[] {
-  const sandbox = request.permissionMode === "auto" ? "workspace-write" : "read-only";
+  const sandbox =
+    request.permissionMode === "full"
+      ? "danger-full-access"
+      : request.permissionMode === "auto"
+        ? "workspace-write"
+        : "read-only";
   if (request.nativeId) {
     return [
       "exec",
@@ -33,7 +38,7 @@ export function createCodexAdapter(): ProcessAgentAdapter {
     label: "Codex",
     command: "codex",
     supportsNativeHistory: true,
-    permissionModes: ["plan", "ask", "auto"],
+    permissionModes: ["plan", "ask", "auto", "full"],
     buildArgs: buildCodexArgs,
   });
 }
