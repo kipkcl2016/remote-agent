@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import test from "node:test";
 import { NativeHistoryService } from "../src/history.js";
 
@@ -98,15 +98,15 @@ test("native history shows disallowed directories as browse-only", async () => {
     assert.equal((await service.get("codex", "hidden-session"))?.resumable, false);
     assert.equal((await service.get("cursor", "cursor-session"))?.resumable, false);
     assert.equal((await service.get("cursor", "cursor-chat"))?.resumable, true);
-    assert.equal((await service.get("cursor", "cursor-chat"))?.title, root.split("/").at(-1));
+    assert.equal((await service.get("cursor", "cursor-chat"))?.title, basename(root));
     assert.equal((await service.get("cursor", "cursor-chat"))?.createdAt, "2026-08-04T01:00:00.000Z");
     assert.equal((await service.get("cursor", "cursor-chat"))?.updatedAt, "2026-08-04T01:05:00.000Z");
     assert.equal((await service.get("claude", "claude-session"))?.title, "Claude task");
     assert.equal((await service.get("codex", "codex-session"))?.title, "Codex task");
     assert.equal((await service.get("codex", "codex-session"))?.status, "running");
     assert.equal(new Set(sessions.map((session) => session.projectId)).size, 2);
-    assert.equal((await service.get("codex", "codex-session"))?.projectName, root.split("/").at(-1));
-    assert.equal((await service.get("codex", "hidden-session"))?.projectName, outside.split("/").at(-1));
+    assert.equal((await service.get("codex", "codex-session"))?.projectName, basename(root));
+    assert.equal((await service.get("codex", "hidden-session"))?.projectName, basename(outside));
     assert.deepEqual((await service.messages("claude", "claude-session"))?.map((message) => message.text), [
       "Claude task",
     ]);
