@@ -83,7 +83,12 @@ function resolveFileReference(cwd: string, rawReference: string): string {
   }
 
   if (/^[a-z][a-z0-9+.-]*:/i.test(reference)) {
-    throw new SessionFileError(400, "Only local file paths are supported");
+    // Allow single-letter prefixes (Windows drive letters like C:)
+    if (/^[a-z]:[\\\/]/i.test(reference)) {
+      // This is a Windows absolute path, not a URL
+    } else {
+      throw new SessionFileError(400, "Only local file paths are supported");
+    }
   }
 
   const pathWithoutSuffix = reference.split(/[?#]/, 1)[0] ?? reference;
