@@ -1,0 +1,118 @@
+name: Build Release Artifacts
+
+on:
+  push:
+    branches:
+      - 'release/**'
+  workflow_dispatch:
+
+jobs:
+  build-gateway:
+    name: Build Gateway on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest]
+        node-version: [22.x]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+          cache-dependency-path: macos-agent-gateway/package-lock.json
+      
+      - name: Install dependencies
+        working-directory: macos-agent-gateway
+        run: npm ci
+      
+      - name: Run tests
+        working-directory: macos-agent-gateway
+        run: npm test
+      
+      - name: Type check
+        working-directory: macos-agent-gateway
+        run: npm run typecheck
+      
+      - name: Build
+        working-directory: macos-agent-gateway
+        run: npm run build
+      
+      - name: Create package
+        working-directory: macos-agent-gateway
+        run: npm run package
+      
+      - name: Create archive (Unix)
+        if: runner.os != 'Windows'
+        working-directory: macos-agent-gateway/packages
+        run: |
+          tar czf remote-agent-gateway-${{ runner.os }}.tar.gz remote-agent-gateway
+          ls -lh *.tar.gz
+      
+      - name: Create archive (Windows)
+        if: runner.os == 'Windows'
+        working-directory: macos-agent-gateway/packages
+        shell: pwsh
+        run: |
+          Compress-Archive -Path remote-agent-gateway -DestinationPath remote-agent-gateway-Windows.zip
+          Get-ChildItem *.zip
+      
+      - name: Upload artifact (Unix)
+        if: runner.os != 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: remote-agent-gateway-${{ runner.os }}
+          path: macos-agent-gateway/packages/remote-agent-gateway-${{ runner.os }}.tar.gz
+          retention-days: 30
+      
+      - name: Upload artifact (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: remote-agent-gateway-Windows
+          path: macos-agent-gateway/packages/remote-agent-gateway-Windows.zip
+          retention-days: 30
+  
+  build-mobile-client:
+    name: Build Mobile Client Bundle
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: 'npm'
+          cache-dependency-path: mobile-agent-remote/package-lock.json
+      
+      - name: Install dependencies
+        working-directory: mobile-agent-remote
+        run: npm ci
+      
+      - name: Runtime check
+        working-directory: mobile-agent-remote
+        run: npm run check:runtime
+      
+      - name: Build client
+        working-directory: mobile-agent-remote
+        run: npm run build
+      
+      - name: Create client archive
+        working-directory: mobile-agent-remote
+        run: |
+          tar czf ../mobile-agent-remote-client.tar.gz dist/client
+          ls -lh ../*.tar.gz
+      
+      - name: Upload client artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-agent-remote-client
+          path: mobile-agent-remote-client.tar.gz
+          retention-days: 30
