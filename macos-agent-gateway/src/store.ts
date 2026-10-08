@@ -81,6 +81,12 @@ export class GatewayStore {
   }
 
   close(): void {
+    try {
+      // Truncate WAL file before closing to prevent bloat
+      this.database.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+    } catch {
+      // Best-effort checkpoint; continue closing
+    }
     this.database.close();
   }
 

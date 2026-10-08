@@ -53,10 +53,21 @@ const shutdown = (signal: string) => {
   process.stdout.write(`${JSON.stringify({ event: "gateway.stopping", signal })}\n`);
   service.stop();
   server.close(() => {
-    store.close();
+    try {
+      store.close(); // Calls WAL checkpoint before closing
+    } catch (error) {
+      process.stderr.write(`Store close error: ${error}\n`);
+    }
     process.exit(0);
   });
-  const timer = setTimeout(() => process.exit(1), 5_000);
+  const timer = setTimeout(() => {
+    try {
+      store.close(); // Attempt checkpoint even on timeout
+    } catch {
+      // Ignore errors during forced exit
+    }
+    process.exit(1);
+  }, 5_000);
   timer.unref();
 };
 
