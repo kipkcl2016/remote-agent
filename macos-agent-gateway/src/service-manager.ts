@@ -100,7 +100,9 @@ function serviceTarget(): string {
 }
 
 function userId(): number {
-  if (!process.getuid) throw new Error("launchd 服务管理仅支持 macOS");
+  if (!process.getuid) {
+    throw new Error("Service installation is only supported on macOS. On Windows, run the gateway manually or use a service wrapper like nssm.");
+  }
   return process.getuid();
 }
 
