@@ -447,9 +447,17 @@ function openEventStream(
 }
 
 function writeEvent(response: ServerResponse, event: SessionEvent): void {
+  const MAX_EVENT_PAYLOAD_BYTES = 16_384; // 16KB per event
   response.write(`id: ${event.seq}\n`);
   response.write(`event: ${event.type}\n`);
-  response.write(`data: ${JSON.stringify(event)}\n\n`);
+  const serialized = JSON.stringify(event);
+  if (serialized.length > MAX_EVENT_PAYLOAD_BYTES) {
+    const truncated = { ...event, payload: { ...event.payload, _truncated: true } };
+    const truncatedJson = JSON.stringify(truncated).slice(0, MAX_EVENT_PAYLOAD_BYTES);
+    response.write(`data: ${truncatedJson}\n\n`);
+  } else {
+    response.write(`data: ${serialized}\n\n`);
+  }
 }
 
 function consumeRateLimit(
