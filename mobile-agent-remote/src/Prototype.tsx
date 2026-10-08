@@ -1256,8 +1256,8 @@ export default function Prototype() {
       setNotice("请输入 Mac 网关地址");
       return;
     }
-    if (!/^\d{6}$/.test(pairingCode.trim())) {
-      setNotice("请输入 Mac 上显示的 6 位配对码");
+    if (!/^\d{8}$/.test(pairingCode.trim())) {
+      setNotice("请输入 Mac 上显示的 8 位配对码");
       return;
     }
     setConnectionBusy(true);
@@ -2064,13 +2064,13 @@ export default function Prototype() {
                 inputMode="url"
                 data-testid="gateway-url"
               />
-              <label htmlFor="pairing-code">6 位配对码</label>
+              <label htmlFor="pairing-code">8 位配对码</label>
               <KeyboardInput
                 id="pairing-code"
                 type="password"
                 value={pairingCode}
-                onChange={(event) => setPairingCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
-                placeholder="000000"
+                onChange={(event) => setPairingCode(event.target.value.replace(/\D/g, "").slice(0, 8))}
+                placeholder="00000000"
                 inputMode="numeric"
                 data-testid="pairing-code"
               />

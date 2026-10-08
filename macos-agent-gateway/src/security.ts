@@ -13,7 +13,7 @@ export class PairingManager {
   constructor(private readonly ttlMs: number) {}
 
   begin(now = Date.now()): { code: string; expiresAt: string } {
-    const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
+    const code = String(randomInt(0, 100_000_000)).padStart(8, "0");
     this.#active = {
       codeDigest: digest(code),
       expiresAt: now + this.ttlMs,
@@ -24,7 +24,7 @@ export class PairingManager {
   consume(code: string, now = Date.now()): boolean {
     const record = this.#active;
     this.#active = null;
-    if (!record || record.expiresAt < now || !/^\d{6}$/.test(code)) return false;
+    if (!record || record.expiresAt < now || !/^\d{8}$/.test(code)) return false;
     const candidate = digest(code);
     return timingSafeEqual(record.codeDigest, candidate);
   }
