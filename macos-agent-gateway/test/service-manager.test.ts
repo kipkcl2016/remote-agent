@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { platform } from "node:os";
 import test from "node:test";
 import {
   buildLaunchAgentPlist,
@@ -35,7 +36,7 @@ test("detects macOS privacy-protected project roots", () => {
   assert.equal(isMacOSPrivacyProtectedRoot("/Users/example/Projects/app", "/Users/example"), false);
 });
 
-test("service paths stay inside the selected user home", () => {
+test("service paths stay inside the selected user home", { skip: platform() === "win32" }, () => {
   const paths = servicePaths("/Users/example");
   assert.equal(
     paths.plistPath,
