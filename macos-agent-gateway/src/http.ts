@@ -320,7 +320,13 @@ export function createGatewayHttpServer(options: GatewayHttpOptions): Server {
       }
     }
   });
-}
+
+  // Security: Set timeouts and connection limits
+  server.setTimeout(30_000); // 30 seconds total timeout
+  server.requestTimeout = 10_000; // 10 seconds to receive request body
+  server.maxConnections = 100; // Limit concurrent connections
+
+  return server;
 
 class ClientError extends Error {
   constructor(readonly status: number, message: string) {
