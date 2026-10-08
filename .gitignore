@@ -22,3 +22,4 @@ artifacts/**/*.ipa
 artifacts/**/*.mp4
 artifacts/**/*.webm
 artifacts/**/*.zip
+code-review-report.md

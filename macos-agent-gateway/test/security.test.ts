@@ -8,7 +8,7 @@ import { PairingManager, hashToken, resolveAllowedWorkingDirectory } from "../sr
 test("pairing codes are one-time and expire", () => {
   const pairing = new PairingManager(1_000);
   const started = pairing.begin(10_000);
-  assert.match(started.code, /^\d{6}$/);
+  assert.match(started.code, /^\d{8}$/);
   assert.equal(pairing.consume(started.code, 10_500), true);
   assert.equal(pairing.consume(started.code, 10_500), false);
 
