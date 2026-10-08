@@ -27,7 +27,7 @@ export function createGatewayHttpServer(options: GatewayHttpOptions): Server {
   const { config, service, pairing, events, history, usage } = options;
   const pairingAttempts = new Map<string, { count: number; resetAt: number }>();
 
-  return createServer(async (request, response) => {
+  const server = createServer(async (request, response) => {
     const requestId = randomUUID();
     response.setHeader("X-Request-Id", requestId);
     response.setHeader("X-Content-Type-Options", "nosniff");
@@ -69,7 +69,7 @@ export function createGatewayHttpServer(options: GatewayHttpOptions): Server {
           return;
         }
         const body = await readJson(request, config.maxBodyBytes);
-        const code = readRequiredString(body, "code", 6);
+        const code = readRequiredString(body, "code", 8);
         const deviceName = readRequiredString(body, "deviceName", 80);
         if (!pairing.consume(code)) {
           sendError(response, 401, "The pairing code is invalid or expired");
@@ -327,6 +327,7 @@ export function createGatewayHttpServer(options: GatewayHttpOptions): Server {
   server.maxConnections = 100; // Limit concurrent connections
 
   return server;
+}
 
 class ClientError extends Error {
   constructor(readonly status: number, message: string) {
