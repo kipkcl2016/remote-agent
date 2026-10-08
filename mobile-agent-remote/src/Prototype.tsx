@@ -141,12 +141,35 @@ const PROJECT_SESSION_LIMIT = 20;
 const ACTIVE_SESSION_POLL_MS = 1_000;
 const BACKGROUND_SYNC_MS = 15_000;
 const AGENT_USAGE_REFRESH_MS = 60_000;
+const SESSION_CACHE_VERSION = 1;
 const SESSION_CACHE_KEY = "remote-agent.session-cache.v1";
 const PROJECT_EXPANSION_KEY = "remote-agent.project-expansion.v1";
 const SESSION_READ_STATE_KEY = "remote-agent.session-read-state.v1";
 const MAX_CACHED_SESSIONS = 200;
 const MERMAID_MAX_TEXT_SIZE = 20_000;
 const initialCredentials = readWebGatewayCredentials();
+
+// Clean up stale caches with mismatched versions on Web platform startup
+if (typeof window !== "undefined" && typeof localStorage !== "undefined" && !Capacitor.isNativePlatform()) {
+  try {
+    const cacheKeys = Object.keys(localStorage).filter(key =>
+      key.startsWith("remote-agent.session-cache.") ||
+      key.startsWith("remote-agent.project-expansion.")
+    );
+    for (const key of cacheKeys) {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(key) ?? "{}");
+        if (typeof parsed === "object" && parsed !== null && parsed.version !== SESSION_CACHE_VERSION) {
+          localStorage.removeItem(key);
+        }
+      } catch {
+        localStorage.removeItem(key);
+      }
+    }
+  } catch {
+    // Ignore cache cleanup errors
+  }
+}
 
 let mermaidLoader: Promise<(typeof import("mermaid"))["default"]> | null = null;
 
