@@ -62,6 +62,25 @@ npm run dev -- --port 4173
 
 真实手机不能访问 Mac 的 `127.0.0.1`。跨设备联调请先阅读 [安全部署说明](docs/security.md)，使用受信任的私有网络或 HTTPS 反向代理；不要直接把 HTTP 网关暴露到公网。
 
+## Windows 网关使用
+
+Windows 平台可从 CI Artifacts 下载预打包的网关压缩包：
+
+1. **下载与解压**：从 GitHub Actions 运行记录中下载 `remote-agent-gateway-Windows.zip`，解压到任意目录
+2. **安装依赖**：在解压目录运行 `npm install --production`
+3. **启动网关**：使用 `start-gateway.bat C:\path\to\your\projects` 启动网关
+4. **生成配对码**：在另一个终端运行 `pair.bat`
+
+**Windows 特有说明**：
+
+- launchd 是 macOS 专用功能，Windows 无法使用 `service:install` 命令
+- 如需开机自启动，可使用 Windows 任务计划程序或 [NSSM](https://nssm.cc/) 将网关封装为系统服务
+- 当前构建未经代码签名，首次运行可能触发 Windows Defender SmartScreen 警告，选择"仍要运行"即可
+- Windows 默认历史路径：
+  - Cursor: `%APPDATA%\Cursor`
+  - Claude: `%USERPROFILE%\.claude`
+  - Codex: `%USERPROFILE%\.codex`
+
 ## 原生内测
 
 ```bash
