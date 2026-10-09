@@ -184,9 +184,9 @@ macOS 后台服务与 TCC（完全磁盘访问等）行为仍以 [`security.md`]
 | 阶段 | 建议增加的 CI 概念步骤 | Secrets / 变量（仅 GitHub 配置） |
 | --- | --- | --- |
 | **Phase B**（无签名） | `npm run package` 复制 `install-logon-task.ps1` 等；上传 `remote-agent-gateway-Windows-setup-unsigned.zip`；`verify-windows-setup.mjs` 校验 | 无 |
-| **Phase C**（Windows 签名） | 在 Windows runner 或签名专用 runner 上：`signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 ...`；对 zip 内 exe/msi 签名后再打包 | `WINDOWS_CERT_PFX_BASE64` 或 Key Vault 引用、`WINDOWS_CERT_PASSWORD`、`SIGNTOOL_PATH`（若非默认） |
-| **Phase C**（macOS 签名+公证） | `codesign --sign "Developer ID Application: ..."` → `xcrun notarytool submit` → `xcrun stapler staple`；再 `tar czf` | `APPLE_ID`、`APPLE_TEAM_ID`、`APPLE_APP_SPECIFIC_PASSWORD` 或 `notarytool` API Key（`ASC_KEY` 等）、证书 via `BUILD_CERTIFICATE_BASE64` + `P12_PASSWORD` |
-| **通用** | 签名失败则 job 失败；**不上传**私钥到 artifact；发布 job 与 PR 构建分离（仅 `release/**` tag） | 使用 Environment protection + OIDC（若迁移 Azure Key Vault / Apple 官方推荐流程） |
+| **Phase C**（Windows 签名） | `scripts/ci/sign-windows.ps1` 在打包**前**对 `packages/remote-agent-gateway` 内 `.exe/.msi/.dll` 签名；再 `Compress-Archive` | 见下文「GitHub Secrets 清单」；可选 **Azure Trusted Signing**（无需在 runner 落盘 PFX） |
+| **Phase C**（macOS 签名+公证） | `scripts/ci/notarize-macos.sh --package-dir ...`（codesign）→ 打 tar.gz → 若存在 `.pkg` 则 `--artifact` 公证 + staple | `APPLE_DEVELOPER_ID_CERT_*` + `APPLE_NOTARY_*` 或 legacy `APPLE_ID` 组合 |
+| **通用** | Workflow 步骤以 `if: secrets.* != ''` 门控；**无 secrets 时跳过签名，构建仍成功** | 签名步骤仅在 secrets 配置后执行；私钥永不进入 artifact |
 
 文档与 workflow 中只描述 **变量名称与步骤顺序**；证书申请与 secret 录入由维护者在本机或 GitHub Settings 完成。
 
@@ -234,19 +234,125 @@ macOS 后台服务与 TCC（完全磁盘访问等）行为仍以 [`security.md`]
 
 ### Phase C — 付费签名与正式分发
 
-| 交付物 | 说明 |
+**当前状态（流水线就绪 / 等待证书）**：仓库已包含可选 CI 步骤与 `scripts/ci/*`；**未**配置 GitHub Secrets 时 PR/main 构建行为与 Phase B 相同（仅 unsigned 制品）。配置 secrets 并引入待签名的 `.exe`/`.pkg` 后，签名与公证将自动启用。
+
+| 交付物 | 状态 |
 | --- | --- |
-| 采购 EV/OV 证书与 Apple Developer ID | 组织流程，不在仓库 |
-| 签名流水线 | 按 2.3 接入 secrets |
-| macOS `.pkg`（若需要） | 公证 + staple |
-| 发布说明 | SmartScreen/Gatekeeper 用户指引 |
+| CI 门控与签名脚本 | 已就绪（`release-artifacts.yml` + `scripts/ci/sign-windows.ps1`、`notarize-macos.sh`） |
+| 采购 EV/OV 证书与 Apple Developer ID | **待组织采购/注册** |
+| 签名的 launcher / MSI / macOS `.pkg` | **待产品引入原生安装器后**再对二进制签名（当前 zip/tar 主要为 Node 脚本） |
+| 发布说明（SmartScreen/Gatekeeper） | 采购后由维护者补充实测截图 |
 
 **成功标准**
 
-- [ ] Windows：签名的安装包或 launcher 在 Virustotal/Defender 抽样下无篡改告警；新用户 SmartScreen 体验可接受（维护者记录实测截图）。
+- [x] CI 在无 secrets 时始终通过；secrets 存在时调用签名脚本且失败会阻断 job。
+- [x] 文档列出精确 secret 名称、证书存储方式与审批责任人。
+- [ ] Windows：签名的安装包或 launcher 在 Defender/VirusTotal 抽样下无篡改告警；新用户 SmartScreen 体验可接受（维护者记录实测截图）。
 - [ ] macOS：Gatekeeper 默认策略下双击安装不阻断（或仅标准「来自互联网」一次确认）。
 - [ ] 证书轮换与过期前 30 天告警 documented。
 - [ ] [`security.md`](../security.md)「上线前必须完成」中签名项可勾选。
+
+#### Phase C 运维手册（Runbook）
+
+##### 1. 证书类型建议（本仓库）
+
+| 平台 | 推荐 | 理由 |
+| --- | --- | --- |
+| **Windows** | **OV（组织验证）代码签名** 为默认起点；预算与 SmartScreen 体验要求高时再升 **EV** | 当前制品为 zip + PowerShell/bat，无单独 exe；OV 年费较低（公开渠道约 USD 200–500/年）。EV（约 USD 400–900/年 + 硬件令牌）可加快 SmartScreen 声誉建立，适合对外大规模分发 **签名的 MSI/launcher**。 |
+| **Windows（备选）** | **Azure Trusted Signing** | 证书私钥在 Azure 托管，CI 用服务主体 + `az trusted-signing sign`，**不必**把 PFX 存入 GitHub；适合已用 Azure 且希望减少 PFX 泄露面的团队。需在 Azure 订阅中开通产品并完成组织验证。 |
+| **macOS** | **Apple Developer Program**（约 USD 99/年）+ **Developer ID Application** 证书 | 未来 `.pkg` 或捆绑原生 `node` 时必须 codesign + 公证；当前 tar.gz 以脚本为主，公证在 `.pkg` 落地后才有用户可见收益。 |
+
+**谁应审批采购**
+
+| 事项 | 建议审批人 |
+| --- | --- |
+| OV/EV 代码签名证书（CA 合同） | 仓库 **Owner** 或 **组织安全/IT 负责人**（需公司法人或组织身份验证材料） |
+| Apple Developer Program 年费 | 同上；需 Apple ID 与 **Account Holder** 接受协议 |
+| Azure Trusted Signing 订阅费用 | 云订阅 **Billing Owner** + 安全负责人 |
+| 在 GitHub 写入生产 secrets | 仓库 **Admin**；建议使用 GitHub **Environment**（如 `release-signing`）+ Required reviewers |
+
+本 Runbook **不**代客购买证书；Agent/CI 仅准备流水线。
+
+##### 2. Windows：准备 PFX 或 Azure Trusted Signing
+
+**方式 A — 经典 PFX（signtool）**
+
+1. 向 CA（Sectigo、SSL.com、DigiCert 等）购买 **OV 或 EV 代码签名**；完成组织验证。
+2. 在签发机器或 HSM 上导出 **`.pfx`**（含私钥）；**切勿**提交到 git。
+3. 在本机生成 base64（示例，PowerShell）：
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("C:\secure\codesign.pfx")) | Set-Content codesign.b64.txt
+```
+
+4. 将 `codesign.b64.txt` 全文粘贴为 GitHub Secret **`WINDOWS_CODE_SIGNING_CERT`**；口令存入 **`WINDOWS_CODE_SIGNING_CERT_PASSWORD`**。
+5. 可选：`SIGNTOOL_PATH`（非默认 SDK 路径）、`WINDOWS_TIMESTAMP_URL`（默认 `http://timestamp.digicert.com`）。
+
+**方式 B — Azure Trusted Signing（推荐作 CI 简化项）**
+
+1. 在 Azure 门户创建 Trusted Signing 账户与证书配置文件（Certificate Profile）。
+2. 为 CI 创建应用注册或服务主体，授予对该账户的签名权限。
+3. 在 GitHub 配置：`AZURE_TRUSTED_SIGNING_ACCOUNT_NAME`、`AZURE_TRUSTED_SIGNING_CERT_PROFILE_NAME`、`AZURE_CLIENT_ID`、`AZURE_TENANT_ID`、`AZURE_CLIENT_SECRET`（或后续改为 OIDC federation）。
+4. Windows runner 需已安装 **Azure CLI**；`sign-windows.ps1` 在检测到 Azure 变量时走 `az trusted-signing sign`。
+
+**签名对象（引入安装器后）**
+
+对 `packages/remote-agent-gateway` 目录内所有 `.exe`、`.msi`、`.dll`、`.cab` 在 **打 zip 之前** 签名。脚本与 bat 本身不签 Authenticode；用户摩擦主要来自 **launcher/installer exe** 与 **MSI**。
+
+##### 3. macOS：Developer ID + notarytool
+
+1. 加入 [Apple Developer Program](https://developer.apple.com/programs/)（Account Holder 接受协议）。
+2. 在 **Certificates, Identifiers & Profiles** 创建 **Developer ID Application** 证书；在 Mac 上导出为 `.p12`。
+3. Base64 编码 `.p12` → GitHub Secret **`APPLE_DEVELOPER_ID_CERT_BASE64`**；口令 → **`APPLE_DEVELOPER_ID_CERT_PASSWORD`**；Team ID → **`APPLE_TEAM_ID`**。
+4. **公证（推荐 API Key，优于 App 专用密码）**：
+   - App Store Connect → Users and Access → **Keys** → 生成 **App Store Connect API** 密钥（Admin 或 App Manager）。
+   - 下载 `.p8`，base64 后存入 **`APPLE_NOTARY_API_KEY_BASE64`**；Key ID → **`APPLE_NOTARY_API_KEY_ID`**；Issuer ID → **`APPLE_NOTARY_API_KEY_ISSUER_ID`**。
+5. **Legacy（可选）**：`APPLE_ID` + **`APPLE_APP_SPECIFIC_PASSWORD`**（appleid.apple.com 生成）+ `APPLE_TEAM_ID`。
+6. CI 流程（已实现）：
+   - 打包前：`notarize-macos.sh --package-dir macos-agent-gateway/packages/remote-agent-gateway` → `codesign --options runtime` 针对目录内 Mach-O。
+   - 若构建产出 `remote-agent-gateway-macos.pkg`：打包后 `notarize-macos.sh --artifact ...` → `xcrun notarytool submit --wait` → `xcrun stapler staple`。
+7. 可选：显式指定 **`APPLE_CODESIGN_IDENTITY`**（如 `Developer ID Application: Your Org (TEAMID)`）。
+
+##### 4. GitHub Actions Secrets 清单（精确名称）
+
+在仓库 **Settings → Secrets and variables → Actions**（或 Environment `release-signing`）创建：
+
+| Secret 名称 | 用途 | 何时必需 |
+| --- | --- | --- |
+| `WINDOWS_CODE_SIGNING_CERT` | Windows 代码签名 PFX（base64） | PFX 路径签名 |
+| `WINDOWS_CODE_SIGNING_CERT_PASSWORD` | PFX 口令 | 与上配套 |
+| `SIGNTOOL_PATH` | signtool.exe 绝对路径 | 可选 |
+| `WINDOWS_TIMESTAMP_URL` | RFC 3161 时间戳 URL | 可选 |
+| `AZURE_TRUSTED_SIGNING_ACCOUNT_NAME` | Azure Trusted Signing 账户名 | Azure 路径 |
+| `AZURE_TRUSTED_SIGNING_CERT_PROFILE_NAME` | 证书配置文件名 | Azure 路径 |
+| `AZURE_CLIENT_ID` / `AZURE_TENANT_ID` / `AZURE_CLIENT_SECRET` | 服务主体登录 Azure | Azure 路径 |
+| `APPLE_DEVELOPER_ID_CERT_BASE64` | Developer ID Application `.p12`（base64） | macOS codesign |
+| `APPLE_DEVELOPER_ID_CERT_PASSWORD` | `.p12` 口令 | macOS codesign |
+| `APPLE_TEAM_ID` | 10 位 Team ID | macOS |
+| `APPLE_CODESIGN_IDENTITY` | 完整签名身份字符串 | 可选 |
+| `APPLE_NOTARY_API_KEY_ID` | App Store Connect API Key ID | 公证（推荐） |
+| `APPLE_NOTARY_API_KEY_ISSUER_ID` | Issuer UUID | 公证（推荐） |
+| `APPLE_NOTARY_API_KEY_BASE64` | `.p8` 内容 base64 | 公证（推荐） |
+| `APPLE_ID` | Apple ID 邮箱 | 公证 legacy |
+| `APPLE_APP_SPECIFIC_PASSWORD` | 应用专用密码 | 公证 legacy |
+
+**本地演练**
+
+```bash
+# 应明确失败（无 secrets）
+bash scripts/ci/notarize-macos.sh --package-dir /tmp/foo --require-secrets
+```
+
+```powershell
+# 应明确失败（无 secrets）
+.\scripts\ci\sign-windows.ps1 -PackageDir . -RequireSecrets
+```
+
+##### 5. 启用签名后的维护
+
+- 证书到期前 **30 天**：在团队日历/告警中登记；轮换时同时更新 GitHub secrets 与 CA/Azure 侧配置。
+- 轮换后跑一次 `release/**` 或 `workflow_dispatch` 构建，确认 SmartScreen/Gatekeeper 行为未回退。
+- 仍遵守 [`security.md`](../security.md)：签名降低分发摩擦，**不**替代网关默认 `127.0.0.1` 与配对码流程。
 
 ---
 
@@ -267,3 +373,4 @@ macOS 后台服务与 TCC（完全磁盘访问等）行为仍以 [`security.md`]
 | --- | --- |
 | 2026-10-09 | 初版：Windows 自启动与签名分阶段规划（文档 + 非生产 stubs） |
 | 2026-10-09 | Phase B：网关包内置未签名任务计划安装脚本 + CI `remote-agent-gateway-Windows-setup-unsigned.zip` |
+| 2026-10-09 | Phase C 准备：可选签名 CI 门控、`scripts/ci/*`、本 Runbook 与「流水线就绪 / 等待证书」清单 |
