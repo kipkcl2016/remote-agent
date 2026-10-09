@@ -234,6 +234,27 @@ jobs:
           cp mobile-agent-remote/android/app/build/outputs/apk/debug/app-debug.apk remote-agent-android-debug.apk
           ls -lh remote-agent-android-debug.apk
 
+      - name: Verify Android APK version metadata
+        run: |
+          EXPECTED_VERSION=$(node -p "require('./mobile-agent-remote/package.json').version")
+          EXPECTED_CODE=$(grep -E 'versionCode[[:space:]]+[0-9]+' mobile-agent-remote/android/app/build.gradle | head -1 | grep -oE '[0-9]+')
+          AAPT="$(find /usr/local/lib/android/sdk/build-tools -name aapt -type f 2>/dev/null | sort -V | tail -1)"
+          if [ -z "$AAPT" ]; then
+            echo "aapt not found"
+            exit 1
+          fi
+          DUMP="$("$AAPT" dump badging remote-agent-android-debug.apk)"
+          echo "$DUMP" | grep -E "package:|versionCode|versionName"
+          echo "$DUMP" | grep -q "versionName='${EXPECTED_VERSION}'" || {
+            echo "Expected versionName ${EXPECTED_VERSION}"
+            exit 1
+          }
+          ACTUAL_CODE=$(echo "$DUMP" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p" | head -1)
+          if [ "$ACTUAL_CODE" != "$EXPECTED_CODE" ]; then
+            echo "Expected versionCode ${EXPECTED_CODE}, got ${ACTUAL_CODE}"
+            exit 1
+          fi
+
       - name: Upload Android debug APK
         uses: actions/upload-artifact@v4
         with:

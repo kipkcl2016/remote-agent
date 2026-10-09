@@ -9,6 +9,7 @@ import type {
   AgentUsageProvider,
   AgentUsageWindow,
 } from "./types.js";
+import { GATEWAY_VERSION } from "./version.js";
 
 const USAGE_CACHE_MS = 60_000;
 const STATUS_TIMEOUT_MS = 4_000;
@@ -361,7 +362,7 @@ async function readCodexRateLimits(): Promise<unknown> {
           clientInfo: {
             name: "remote_agent_gateway",
             title: "Remote Agent Gateway",
-            version: "0.1.0",
+            version: GATEWAY_VERSION,
           },
           capabilities: {},
         },
