@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { once } from "node:events";
 import test from "node:test";
 import { AgentRegistry } from "../src/agent-registry.js";
@@ -209,7 +209,7 @@ test("gateway pairs a device and serves the session lifecycle", async () => {
     assert.equal(historyBody.data[0]?.agent, "codex");
     assert.equal(historyBody.data[0]?.resumable, true);
     assert.equal(historyBody.data[0]?.status, "running");
-    assert.equal(historyBody.data[0]?.projectName, root.split("/").at(-1));
+    assert.equal(historyBody.data[0]?.projectName, basename(root));
     assert.match(historyBody.data[0]?.projectId ?? "", /^[a-f0-9]{64}$/);
 
     const nativeSnapshot = await fetch(

@@ -1,6 +1,6 @@
 import { chmodSync, cpSync, existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { delimiter, dirname, resolve } from "node:path";
+import { delimiter, dirname, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 
@@ -78,7 +78,7 @@ export function isMacOSPrivacyProtectedRoot(root: string, userHome = homedir()):
   const normalized = resolve(root);
   return ["Desktop", "Documents", "Downloads"].some((folder) => {
     const protectedDirectory = resolve(userHome, folder);
-    return normalized === protectedDirectory || normalized.startsWith(`${protectedDirectory}/`);
+    return normalized === protectedDirectory || normalized.startsWith(`${protectedDirectory}${sep}`);
   });
 }
 
