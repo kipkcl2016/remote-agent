@@ -1,4 +1,4 @@
-import { chmodSync, cpSync, existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { delimiter, dirname, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -122,6 +122,7 @@ function install(roots: string[]): void {
   mkdirSync(paths.logDir, { recursive: true, mode: 0o700 });
   mkdirSync(paths.runtimeDir, { recursive: true, mode: 0o700 });
   cpSync(builtRuntimeDir, paths.runtimeDir, { recursive: true, force: true });
+  copyFileSync(resolve(projectRoot, "package.json"), resolve(paths.dataDir, "package.json"));
   const entryPath = resolve(paths.runtimeDir, "index.js");
   const plist = buildLaunchAgentPlist({
     nodePath: process.execPath,
