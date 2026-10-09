@@ -51,3 +51,46 @@ test("applyProjectDisambiguation splits workspace prefixes from the canonical fo
     { project: "remote-agent", projectHint: "workspace" },
   );
 });
+
+test("duplicate Claude project folders keep the Git root name out of disambiguation glue", () => {
+  const sessions = disambiguateProjectNames([
+    {
+      projectId: "claude-a",
+      project: "shared",
+      cwd: "/Users/test/Projects/team-a/shared",
+    },
+    {
+      projectId: "claude-b",
+      project: "shared",
+      cwd: "/Users/test/Projects/team-b/shared",
+    },
+  ]);
+
+  assert.equal(sessions[0]?.project, "shared");
+  assert.equal(sessions[1]?.project, "shared");
+  assert.notEqual(sessions[0]?.projectHint, sessions[1]?.projectHint);
+  for (const session of sessions) {
+    assert.doesNotMatch(session.project ?? "", / · shared$/);
+    assert.doesNotMatch(session.project ?? "", /^Users-/);
+  }
+});
+
+test("duplicate Cursor workspaces keep the folder name, not workspace path glue", () => {
+  const sessions = disambiguateProjectNames([
+    {
+      projectId: "cursor-a",
+      project: "remote-agent",
+      cwd: "/Users/dev/ws-a/workspace/remote-agent",
+    },
+    {
+      projectId: "cursor-b",
+      project: "remote-agent",
+      cwd: "/Users/dev/ws-b/workspace/remote-agent",
+    },
+  ]);
+
+  assert.equal(sessions[0]?.project, "remote-agent");
+  assert.equal(sessions[1]?.project, "remote-agent");
+  assert.notEqual(sessions[0]?.projectHint, sessions[1]?.projectHint);
+  assert.doesNotMatch(sessions[0]?.project ?? "", /^workspace · /);
+});
