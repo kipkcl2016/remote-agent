@@ -132,3 +132,84 @@ test("Cursor history prefers IDE composerHeaders titles and skips archived", asy
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("Cursor 3.0 composer.composerHeaders ItemTable index loads transcript messages", async () => {
+  const root = mkdtempSync(join(tmpdir(), "remote-agent-cursor-itemtable-"));
+  const workspace = join(root, "demo-app");
+  mkdirSync(workspace, { recursive: true });
+
+  const composerId = "22222222-2222-4222-8222-222222222222";
+  const dbPath = join(root, "state.vscdb");
+  const database = new DatabaseSync(dbPath);
+  database.exec(`
+    CREATE TABLE ItemTable (key TEXT UNIQUE ON CONFLICT REPLACE, value BLOB);
+    CREATE TABLE cursorDiskKV (key TEXT UNIQUE ON CONFLICT REPLACE, value BLOB);
+  `);
+  database.prepare(`INSERT INTO ItemTable (key, value) VALUES (?, ?)`).run(
+    "composer.composerHeaders",
+    JSON.stringify({
+      allComposers: [{
+        composerId,
+        name: "ItemTable indexed chat",
+        lastUpdatedAt: Date.parse("2026-10-01T12:00:00.000Z"),
+        workspaceIdentifier: {
+          id: "ws-demo",
+          uri: { fsPath: workspace },
+        },
+      }],
+    }),
+  );
+  database.close();
+
+  const transcriptDir = join(root, "cursor-transcripts", "proj", "agent-transcripts", composerId);
+  mkdirSync(transcriptDir, { recursive: true });
+  writeFileSync(
+    join(transcriptDir, `${composerId}.jsonl`),
+    [
+      JSON.stringify({
+        type: "user",
+        id: "msg-1",
+        timestamp: "2026-10-01T12:00:01.000Z",
+        role: "user",
+        message: {
+          content: [{ type: "text", text: "<user_query>Hello from ItemTable</user_query>" }],
+        },
+      }),
+      JSON.stringify({
+        type: "assistant",
+        role: "assistant",
+        message: {
+          content: [
+            { type: "thinking", thinking: "Planning" },
+            { type: "text", text: "Reply body" },
+          ],
+        },
+      }),
+      "",
+    ].join("\n"),
+  );
+
+  const dirs = {
+    cursor: join(root, "cursor"),
+    cursorChats: join(root, "cursor-chats"),
+    cursorComposerDb: dbPath,
+    cursorTranscripts: join(root, "cursor-transcripts"),
+    claude: join(root, "claude"),
+    codex: join(root, "codex"),
+  };
+
+  try {
+    const service = new NativeHistoryService(dirs, [root]);
+    const sessions = await service.list({ agent: "cursor", limit: 10 });
+    assert.equal(sessions.length, 1);
+    assert.equal(sessions[0]?.id, composerId);
+    assert.equal(sessions[0]?.title, "ItemTable indexed chat");
+    assert.equal(sessions[0]?.resumable, true);
+    assert.deepEqual(
+      (await service.messages("cursor", composerId))?.map((message) => message.text),
+      ["Hello from ItemTable", "Planning\nReply body"],
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
