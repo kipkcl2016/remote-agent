@@ -31,6 +31,48 @@ type MockNativeSession = {
   source: "native";
 };
 
+type MockAgentAvailability = {
+  kind: "cursor" | "claude" | "codex";
+  label: string;
+  command: string;
+  installed: boolean;
+  version?: string;
+  supportsNativeHistory: boolean;
+  permissionModes: Array<"plan" | "ask" | "auto" | "full">;
+};
+
+function defaultMockAgents(): MockAgentAvailability[] {
+  return [
+    {
+      kind: "cursor",
+      label: "Cursor",
+      command: "cursor-agent",
+      installed: true,
+      version: "2026.01.0",
+      supportsNativeHistory: true,
+      permissionModes: ["plan", "ask", "auto", "full"],
+    },
+    {
+      kind: "claude",
+      label: "Claude Code",
+      command: "claude",
+      installed: true,
+      version: "1.0.0",
+      supportsNativeHistory: true,
+      permissionModes: ["plan", "ask", "auto", "full"],
+    },
+    {
+      kind: "codex",
+      label: "Codex",
+      command: "codex",
+      installed: true,
+      version: "0.9.0",
+      supportsNativeHistory: true,
+      permissionModes: ["plan", "ask", "auto", "full"],
+    },
+  ];
+}
+
 async function installConnectedGateway(page: Page, extraSessions = 0) {
   await page.addInitScript(({ url }) => {
     localStorage.setItem("remote-agent.gateway.url", url);
@@ -125,6 +167,7 @@ async function handleGatewayRoute(
   fileRequests: string[] = [],
   nativeSessions: MockNativeSession[] = [],
   nativeMessages: Map<string, Array<{ id: string; role: "user" | "assistant"; text: string }>> = new Map(),
+  agents: MockAgentAvailability[] = defaultMockAgents(),
 ) {
   const request = route.request();
   const url = new URL(request.url());
@@ -140,6 +183,7 @@ async function handleGatewayRoute(
   if (method === "GET" && path === "/v1/devices") {
     return ok([{ id: "phone", name: "Android 设备", current: true, createdAt: now, lastSeenAt: now }]);
   }
+  if (method === "GET" && path === "/v1/agents") return ok(agents);
   if (method === "GET" && path === "/v1/agents/usage") {
     return ok([
       {
@@ -793,7 +837,7 @@ test("[SESSION-002][SESSION-005] tabs and search filter immediately before a ful
   await expect(page.getByTestId("filter-feedback")).toContainText("已完成 · 未读0");
   await expect(page.getByTestId("new-session")).toHaveAttribute("aria-label", "发起 Codex 新会话");
   await page.getByTestId("new-session").click();
-  await expect(page.getByRole("button", { name: "Codex", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("new-session-agent-Codex")).toHaveAttribute("aria-pressed", "true");
   await page.keyboard.press("Escape");
 
   await page.getByTestId("filter-Claude").click();
@@ -815,7 +859,7 @@ test("[SESSION-002][SESSION-005] tabs and search filter immediately before a ful
   await expect(page.getByTestId("session-codex-session")).toHaveCount(0);
   await expect(page.getByTestId("new-session")).toHaveAttribute("aria-label", "发起 Cursor 新会话");
   await page.getByTestId("new-session").click();
-  await expect(page.getByRole("button", { name: "Cursor", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("new-session-agent-Cursor")).toHaveAttribute("aria-pressed", "true");
   await page.keyboard.press("Escape");
 
   await page.getByTestId("session-cursor-session").click();
@@ -1192,7 +1236,7 @@ test("[HISTORY-001][HISTORY-003] read-only history moves its hint from the row t
   expect(Math.abs(
     (headerAndStream[1]?.y ?? 0) - ((headerAndStream[0]?.y ?? 0) + (headerAndStream[0]?.height ?? 0)),
   )).toBeLessThanOrEqual(1);
-  await expect(page.getByTestId("session-stream")).toContainText("只能查看记录摘要");
+  await expect(page.getByTestId("session-stream")).toContainText("不能在手机端续接或发送指令");
   await expect(page.getByTestId("detail-reply")).toBeDisabled();
   await expect(page.getByTestId("detail-reply")).toHaveAttribute("placeholder", "仅查看");
   await expect(page.getByTestId("detail-send")).toBeDisabled();
@@ -1336,4 +1380,59 @@ test("[SETTING-001][SETTING-002] settings toggles persist across reload", async 
   await page.getByTestId("nav-settings").click();
   await expect(page.getByRole("button", { name: "默认受限执行" })).toHaveAttribute("aria-pressed", "false");
   await expect(page.getByRole("button", { name: "Agent 状态通知" })).toHaveAttribute("aria-pressed", "false");
+});
+
+test("[AGENT-001] mobile reads /v1/agents and disables missing CLI in tabs and new session", async ({ page }) => {
+  await page.addInitScript(({ url }) => {
+    localStorage.setItem("remote-agent.gateway.url", url);
+    localStorage.setItem("remote-agent.gateway.token", "test-token");
+  }, { url: gatewayUrl });
+
+  const agents = defaultMockAgents().map((agent) => (
+    agent.kind === "claude"
+      ? { ...agent, installed: false, version: undefined }
+      : agent
+  ));
+  await page.route(`${gatewayUrl}/**`, (route) => (
+    handleGatewayRoute(route, [], new Map(), "TestMac.local", [], [], new Map(), agents)
+  ));
+
+  await page.goto("/");
+  await expect(page.getByTestId("agent-install-Claude")).toHaveText("未安装");
+  await expect(page.getByTestId("filter-Claude")).toBeDisabled();
+  await page.getByTestId("new-session").click();
+  await expect(page.getByText("任务将在 TestMac.local 上执行")).toBeVisible();
+  await expect(page.getByTestId("new-session-agent-Claude")).toBeDisabled();
+  await expect(page.getByTestId("new-session-agent-Cursor")).toBeEnabled();
+});
+
+test("[CONN-001] background sync failure clears online UI", async ({ page }) => {
+  await page.addInitScript(({ url }) => {
+    localStorage.setItem("remote-agent.gateway.url", url);
+    localStorage.setItem("remote-agent.gateway.token", "test-token");
+    (window as unknown as { __REMOTE_AGENT_SYNC_MS__: number }).__REMOTE_AGENT_SYNC_MS__ = 400;
+  }, { url: gatewayUrl });
+
+  let failSync = false;
+  await page.route(`${gatewayUrl}/**`, async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    const isStateSync = route.request().method() === "GET" && (
+      path === "/v1/sessions"
+      || path === "/v1/history"
+      || path === "/v1/config"
+      || path === "/v1/devices"
+      || path === "/v1/agents"
+    );
+    if (failSync && isStateSync) {
+      return route.fulfill({ status: 503, json: { error: { message: "offline" } } });
+    }
+    return handleGatewayRoute(route, [], new Map());
+  });
+
+  await page.goto("/");
+  await expect(page.getByTestId("new-session")).toBeVisible();
+  failSync = true;
+  await page.waitForTimeout(900);
+  await expect(page.getByTestId("new-session")).toHaveCount(0);
+  await expect(page.locator(".connection-status-button .online-dot.is-offline")).toBeVisible();
 });

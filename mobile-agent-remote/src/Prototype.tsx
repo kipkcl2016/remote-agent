@@ -141,7 +141,13 @@ const filters: Array<"全部" | AgentName> = ["全部", "Cursor", "Claude", "Cod
 const SESSION_DISPLAY_LIMIT = 20;
 const PROJECT_SESSION_LIMIT = 20;
 const ACTIVE_SESSION_POLL_MS = 1_000;
-const BACKGROUND_SYNC_MS = 15_000;
+function readBackgroundSyncMs(): number {
+  if (typeof globalThis === "undefined" || !("__REMOTE_AGENT_SYNC_MS__" in globalThis)) return 15_000;
+  const value = (globalThis as { __REMOTE_AGENT_SYNC_MS__?: unknown }).__REMOTE_AGENT_SYNC_MS__;
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 15_000;
+}
+
+const BACKGROUND_SYNC_MS = readBackgroundSyncMs();
 const AGENT_USAGE_REFRESH_MS = 60_000;
 const SESSION_CACHE_VERSION = 1;
 const SESSION_CACHE_KEY = "remote-agent.session-cache.v1";
@@ -371,6 +377,7 @@ export default function Prototype() {
   const [detailCancelling, setDetailCancelling] = useState(false);
   const [pairedDevices, setPairedDevices] = useState<PairedDeviceApi[]>([]);
   const [agentUsages, setAgentUsages] = useState<AgentUsageApi[] | null>(null);
+  const [agentAvailability, setAgentAvailability] = useState<AgentAvailabilityApi[] | null>(null);
   const [remoteOnline, setRemoteOnline] = useState(false);
   const [connectionBusy, setConnectionBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -442,6 +449,7 @@ export default function Prototype() {
     const url = normalizeGatewayUrl(gatewayUrl);
     if (!url || !gatewayToken) {
       setRemoteOnline(false);
+      setAgentAvailability(null);
       setSessions([]);
       setSessionSyncState("idle");
       setCacheSavedAt(null);
@@ -449,6 +457,7 @@ export default function Prototype() {
     }
     const cached = readSessionCache(url);
     setRemoteOnline(false);
+    setAgentAvailability(null);
     if (cached) {
       setSessions(applySessionReadState(
         url,
@@ -474,16 +483,21 @@ export default function Prototype() {
         setDeviceName(state.hostname);
         setPairedDevices((current) => samePairedDevices(current, state.devices) ? current : state.devices);
         setWorkingDirectory((current) => current || state.allowedRoots[0] || "");
+        setAgentAvailability(state.agents);
         setRemoteOnline(true);
         const savedAt = new Date().toISOString();
         writeSessionCache(url, state.hostname, savedAt, sessionsWithReadState);
         setCacheSavedAt(savedAt);
         setSessionSyncState("fresh");
       } catch {
-        if (active && initial) {
-          setRemoteOnline(false);
-          setSessionSyncState(cached ? "stale" : "error");
-        }
+        if (!active) return;
+        setRemoteOnline(false);
+        setAgentAvailability(null);
+        setSessionSyncState((current) => (
+          cached || current === "fresh" || current === "stale" || current === "refreshing"
+            ? "stale"
+            : "error"
+        ));
       } finally {
         if (active && initial) setConnectionBusy(false);
       }
@@ -646,15 +660,56 @@ export default function Prototype() {
     setSearchOpen(true);
   };
 
+  const agentAvailabilityByName = useMemo(() => {
+    const map = new Map<AgentName, AgentAvailabilityApi>();
+    for (const entry of agentAvailability ?? []) {
+      map.set(kindToAgent(entry.kind), entry);
+    }
+    return map;
+  }, [agentAvailability]);
+
+  const isAgentInstalled = useCallback((agent: AgentName): boolean => {
+    if (!agentAvailability) return true;
+    return agentAvailabilityByName.get(agent)?.installed ?? false;
+  }, [agentAvailability, agentAvailabilityByName]);
+
+  const agentInstallCaption = useCallback((agent: AgentName): string | null => {
+    const entry = agentAvailabilityByName.get(agent);
+    if (!entry) return agentAvailability ? "未安装" : null;
+    if (!entry.installed) return "未安装";
+    if (entry.version) return entry.version;
+    return entry.command;
+  }, [agentAvailability, agentAvailabilityByName]);
+
+  const firstInstalledAgent = useCallback((): AgentName | null => {
+    for (const agent of ["Cursor", "Claude", "Codex"] as AgentName[]) {
+      if (isAgentInstalled(agent)) return agent;
+    }
+    return null;
+  }, [isAgentInstalled]);
+
+  useEffect(() => {
+    if (filter === "全部" || isAgentInstalled(filter)) return;
+    setFilter("全部");
+  }, [filter, isAgentInstalled]);
+
   const selectAgentFilter = (nextFilter: (typeof filters)[number]) => {
     keyboard.hide();
+    if (nextFilter !== "全部" && !isAgentInstalled(nextFilter)) {
+      setNotice(`${nextFilter} 未在 Mac 上安装`);
+      return;
+    }
     setFilter(nextFilter);
     if (nextFilter !== "全部") setDraftAgent(nextFilter);
   };
 
   const openNewSession = () => {
     keyboard.hide();
-    if (filter !== "全部") setDraftAgent(filter);
+    if (filter !== "全部" && isAgentInstalled(filter)) setDraftAgent(filter);
+    else {
+      const installed = firstInstalledAgent();
+      if (installed) setDraftAgent(installed);
+    }
     setDraftPermissionMode(alwaysConfirm ? "ask" : "auto");
     setNewSessionOpen(true);
   };
@@ -670,6 +725,7 @@ export default function Prototype() {
     setPairingMode(!selected);
     setPairedDevices([]);
     setAgentUsages(null);
+    setAgentAvailability(null);
     setWorkingDirectory("");
     setRemoteOnline(false);
     setSessions([]);
@@ -1328,6 +1384,10 @@ export default function Prototype() {
       setNotice("先填写 Mac 上的工作目录");
       return;
     }
+    if (!isAgentInstalled(draftAgent)) {
+      setNotice(`${draftAgent} 未在 Mac 上安装，无法启动会话`);
+      return;
+    }
     setConnectionBusy(true);
     try {
       const created = await gatewayRequest<GatewaySessionApi>(gatewayUrl, "/v1/sessions", {
@@ -1673,29 +1733,45 @@ export default function Prototype() {
               aria-label="按 Agent 筛选会话"
               role="tablist"
             >
-              {filters.map((item) => (
-                <button
-                  key={item}
-                  type="button"
-                  className={filter === item ? "is-selected" : ""}
-                  onClick={() => selectAgentFilter(item)}
-                  aria-pressed={filter === item}
-                  aria-selected={filter === item}
-                  role="tab"
-                  data-testid={`filter-${item}`}
-                >
-                  <span className="agent-filter-copy">
-                    <span>{item}</span>
-                    {item === "全部" ? null : (
-                      <AgentUsageStatus
-                        agent={item}
-                        usage={agentUsages?.find((usage) => kindToAgent(usage.agent) === item) ?? null}
-                        connected={remoteOnline}
-                      />
-                    )}
-                  </span>
-                </button>
-              ))}
+              {filters.map((item) => {
+                const agentInstalled = item === "全部" || isAgentInstalled(item);
+                const installCaption = item === "全部" ? null : agentInstallCaption(item);
+                return (
+                  <button
+                    key={item}
+                    type="button"
+                    className={`${filter === item ? "is-selected" : ""}${agentInstalled ? "" : " is-disabled"}`}
+                    onClick={() => selectAgentFilter(item)}
+                    aria-pressed={filter === item}
+                    aria-selected={filter === item}
+                    aria-disabled={!agentInstalled}
+                    disabled={!agentInstalled}
+                    role="tab"
+                    data-testid={`filter-${item}`}
+                  >
+                    <span className="agent-filter-copy">
+                      <span>{item}</span>
+                      {item === "全部" ? null : (
+                        <>
+                          <AgentUsageStatus
+                            agent={item}
+                            usage={agentUsages?.find((usage) => kindToAgent(usage.agent) === item) ?? null}
+                            connected={remoteOnline}
+                          />
+                          {installCaption ? (
+                            <span
+                              className={`agent-filter-install${agentInstalled ? "" : " is-missing"}`}
+                              data-testid={`agent-install-${item}`}
+                            >
+                              {installCaption}
+                            </span>
+                          ) : null}
+                        </>
+                      )}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
 
             <div className="filter-feedback" data-testid="filter-feedback">
@@ -1829,7 +1905,7 @@ export default function Prototype() {
         open={newSessionOpen}
         onOpenChange={setNewSessionOpen}
         title="发起新会话"
-        description="任务将在 Yuqi’s MacBook Pro 上执行"
+        description={`任务将在 ${deviceName} 上执行`}
         snap={0.76}
       >
         <div className="sheet-form">
@@ -1880,18 +1956,36 @@ export default function Prototype() {
           ) : null}
           <span className="field-caption">Agent</span>
           <div className="sheet-agent-picker" aria-label="选择 Agent">
-            {(["Cursor", "Claude", "Codex"] as AgentName[]).map((agent) => (
-              <button
-                key={agent}
-                type="button"
-                className={draftAgent === agent ? "is-selected" : ""}
-                onClick={() => setDraftAgent(agent)}
-                aria-pressed={draftAgent === agent}
-              >
-                <AgentIcon agent={agent} />
-                {agent}
-              </button>
-            ))}
+            {(["Cursor", "Claude", "Codex"] as AgentName[]).map((agent) => {
+              const installed = isAgentInstalled(agent);
+              const caption = agentInstallCaption(agent);
+              return (
+                <button
+                  key={agent}
+                  type="button"
+                  className={`${draftAgent === agent ? "is-selected" : ""}${installed ? "" : " is-disabled"}`}
+                  onClick={() => {
+                    if (!installed) {
+                      setNotice(`${agent} 未在 Mac 上安装`);
+                      return;
+                    }
+                    setDraftAgent(agent);
+                  }}
+                  aria-pressed={draftAgent === agent}
+                  aria-disabled={!installed}
+                  disabled={!installed}
+                  data-testid={`new-session-agent-${agent}`}
+                >
+                  <span className="sheet-agent-picker-copy">
+                    <span className="sheet-agent-picker-label">
+                      <AgentIcon agent={agent} />
+                      {agent}
+                    </span>
+                    {caption ? <small>{caption}</small> : null}
+                  </span>
+                </button>
+              );
+            })}
           </div>
           <span className="field-caption">权限</span>
           <div className="sheet-permission-picker" aria-label="选择权限" data-testid="new-session-permission">
@@ -2005,8 +2099,8 @@ export default function Prototype() {
                     会话位于 <strong>{selectedSession.project}</strong>，工作目录为 <code>{selectedSession.cwd}</code>。
                     {selectedSession.source === "native"
                       ? selectedSession.resumable
-                        ? " 当前历史没有可展示的文本，可在下方继续该会话。"
-                        : " 当前历史没有可展示的文本，只能查看记录摘要。"
+                        ? " 当前历史没有可展示的文本；若 Mac 已安装对应 Agent，可在下方续接并发送新指令。"
+                        : " 当前历史没有可展示的文本，此为只读原生历史，不能在手机端续接或发送指令。"
                       : " 正在等待 Agent 返回工作内容。"}
                   </p>
                 </div>
@@ -2774,6 +2868,16 @@ function SettingToggle({
 
 type AgentKindApi = "cursor" | "claude" | "codex";
 
+type AgentAvailabilityApi = {
+  kind: AgentKindApi;
+  label: string;
+  command: string;
+  installed: boolean;
+  version?: string;
+  supportsNativeHistory: boolean;
+  permissionModes: Array<"plan" | "ask" | "auto" | "full">;
+};
+
 type AgentUsageApi = {
   agent: AgentKindApi;
   state: "available" | "unavailable";
@@ -2851,8 +2955,9 @@ async function loadRemoteState(url: string, token: string): Promise<{
   hostname: string;
   allowedRoots: string[];
   devices: PairedDeviceApi[];
+  agents: AgentAvailabilityApi[];
 }> {
-  const [gatewaySessions, nativeHistory, config, devices] = await Promise.all([
+  const [gatewaySessions, nativeHistory, config, devices, agents] = await Promise.all([
     gatewayRequest<GatewaySessionApi[]>(url, "/v1/sessions?limit=200", { token }),
     gatewayRequest<NativeHistoryApi[]>(
       url,
@@ -2861,6 +2966,7 @@ async function loadRemoteState(url: string, token: string): Promise<{
     ),
     gatewayRequest<{ hostname: string; allowedRoots: string[] }>(url, "/v1/config", { token }),
     gatewayRequest<PairedDeviceApi[]>(url, "/v1/devices", { token }),
+    gatewayRequest<unknown>(url, "/v1/agents", { token }),
   ]);
   const imported = new Set(
     gatewaySessions.flatMap((session) => session.nativeId ? [`${session.agent}:${session.nativeId}`] : []),
@@ -2871,7 +2977,13 @@ async function loadRemoteState(url: string, token: string): Promise<{
       .filter((session) => !imported.has(`${session.agent}:${session.id}`))
       .map(mapNativeSession),
   ].sort((a, b) => sessionTimestamp(b) - sessionTimestamp(a))), PROJECT_SESSION_LIMIT));
-  return { sessions, hostname: config.hostname, allowedRoots: config.allowedRoots, devices };
+  return {
+    sessions,
+    hostname: config.hostname,
+    allowedRoots: config.allowedRoots,
+    devices,
+    agents: normalizeAgentAvailability(agents),
+  };
 }
 
 async function gatewayRequest<T>(
@@ -3332,6 +3444,43 @@ function kindToAgent(kind: AgentKindApi): AgentName {
 
 function agentToKind(agent: AgentName): AgentKindApi {
   return agent.toLocaleLowerCase() as AgentKindApi;
+}
+
+function normalizeAgentAvailability(value: unknown): AgentAvailabilityApi[] {
+  const entries = Array.isArray(value) ? value : [];
+  return (["cursor", "claude", "codex"] as AgentKindApi[]).map((kind) => {
+    const candidate = entries.find((entry) => isRecord(entry) && entry.kind === kind);
+    if (!isRecord(candidate)
+      || typeof candidate.label !== "string"
+      || typeof candidate.command !== "string"
+      || typeof candidate.installed !== "boolean"
+      || typeof candidate.supportsNativeHistory !== "boolean"
+      || !Array.isArray(candidate.permissionModes)) {
+      return {
+        kind,
+        label: kindToAgent(kind),
+        command: kind,
+        installed: true,
+        supportsNativeHistory: true,
+        permissionModes: ["plan", "ask", "auto", "full"],
+      };
+    }
+    const version = typeof candidate.version === "string" && candidate.version.trim()
+      ? candidate.version.trim().slice(0, 80)
+      : undefined;
+    const permissionModes = candidate.permissionModes.flatMap((mode) => (
+      mode === "plan" || mode === "ask" || mode === "auto" || mode === "full" ? [mode] : []
+    ));
+    return {
+      kind,
+      label: candidate.label.trim().slice(0, 80),
+      command: candidate.command.trim().slice(0, 120),
+      installed: candidate.installed,
+      ...(version ? { version } : {}),
+      supportsNativeHistory: candidate.supportsNativeHistory,
+      permissionModes: permissionModes.length ? permissionModes : ["plan", "ask", "auto", "full"],
+    };
+  });
 }
 
 function normalizeAgentUsages(value: unknown): AgentUsageApi[] {
