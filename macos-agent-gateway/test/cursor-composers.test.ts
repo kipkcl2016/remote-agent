@@ -161,8 +161,7 @@ test("Cursor 3.0 composer.composerHeaders ItemTable index loads transcript messa
   );
   database.close();
 
-  const projectSlug = workspace.replace(/^\//, "").replace(/\//g, "-");
-  const transcriptDir = join(root, "cursor-transcripts", projectSlug, "agent-transcripts", composerId);
+  const transcriptDir = join(root, "cursor-transcripts", "proj", "agent-transcripts", composerId);
   mkdirSync(transcriptDir, { recursive: true });
   writeFileSync(
     join(transcriptDir, `${composerId}.jsonl`),
