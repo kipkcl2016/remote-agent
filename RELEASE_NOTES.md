@@ -11,9 +11,10 @@
    - 启动脚本 `start-gateway.sh` 和配对脚本 `pair.sh`
    - 完整的使用说明
 
-2. **Windows 网关包** (`remote-agent-gateway-Windows.zip`)
+2. **Windows 网关包** (`remote-agent-gateway-Windows.zip` / `remote-agent-gateway-Windows-setup-unsigned.zip`)
    - 编译好的 TypeScript 网关服务
    - 启动脚本 `start-gateway.bat` 和配对脚本 `pair.bat`
+   - 未签名登录自启动脚本 `install-logon-task.ps1`、`uninstall-logon-task.ps1`（任务计划，默认 `127.0.0.1`）
    - 完整的使用说明
 
 3. **移动端客户端包** (`mobile-agent-remote-client.tar.gz`)
