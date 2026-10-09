@@ -71,6 +71,7 @@
 | `SETTING-002` | 受限实现 | `notifications` toggle、`app-preferences.ts` | `product-flow.spec.ts`：开关持久化 | — | 只验证 toggle 不崩溃；不得宣称已通知。接入通知前新增功能验收和平台测试 |
 | `DIST-001` | 已实现 | Vite、prepare script、worker、hosting JSON | `sites-worker.test.mjs` 4 项；build | A | 静态资源、未知 GET app fallback、API/write 不 fallback、四个必需产物存在 |
 | `OPS-001` | 已实现 | `service-manager.ts`、launchd plist/runtime copy | `service-manager.test.ts` 3 项：转义/0.0.0.0、TCC、路径 | P | 获授权后 install/status/restart/uninstall、CLI PATH、私网连接、数据保留和 TCC 提示 |
+| `OPS-003` | 已实现 | `scripts/windows-setup/*`、`package.mjs`、`.github/workflows/release-artifacts.yml` | `windows-setup-scripts.test.ts`；CI `verify-windows-setup.mjs` | P | Windows 10/11：`install-logon-task.ps1` 后 `127.0.0.1:17821` 可达；`pair.bat` 手动配对；`uninstall-logon-task.ps1` 无残留监听、数据目录保留 |
 
 ## 7. 自动化测试索引
 
@@ -86,6 +87,7 @@
 | `macos-agent-gateway/test/protocol.test.ts` | Codex/Claude/Cursor CLI 输出解析、native ID、tool、非 JSON |
 | `macos-agent-gateway/test/codex.test.ts` | Codex 新建/续接固定 argv、沙箱映射和非 Git cwd 兼容参数 |
 | `macos-agent-gateway/test/service-manager.test.ts` | plist 固定路径/转义、0.0.0.0、TCC 目录、服务路径 |
+| `macos-agent-gateway/test/windows-setup-scripts.test.ts` | Windows 登录任务安装脚本存在性与 127.0.0.1 默认 |
 
 ### 移动端
 

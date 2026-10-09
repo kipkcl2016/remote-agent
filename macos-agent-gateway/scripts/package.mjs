@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { copyFileSync, cpSync, mkdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -49,12 +49,27 @@ npm install --production
 REM 1. 安装依赖（仅首次）
 npm install --production
 
-REM 2. 启动网关
+REM 2. 启动网关（前台）
 start-gateway.bat C:\\path\\to\\your\\projects
 
 REM 3. 在另一个终端生成配对码
 pair.bat
 \`\`\`
+
+#### 登录自启动（未签名，任务计划程序）
+
+自 v0.1.0+ CI 可提供 \`remote-agent-gateway-Windows-setup-unsigned.zip\`，解压后包含
+\`install-logon-task.ps1\`、\`uninstall-logon-task.ps1\` 与 \`wrapper-start-gateway.cmd\`。
+默认以**当前用户**在**登录时**后台运行，监听 \`127.0.0.1:17821\`（见仓库 \`docs/security.md\`）。
+
+\`\`\`cmd
+npm install --production
+powershell -ExecutionPolicy Bypass -File install-logon-task.ps1 -ProjectRoot C:\\Users\\me\\Projects
+REM 配对仍需手动：pair.bat
+powershell -ExecutionPolicy Bypass -File uninstall-logon-task.ps1
+\`\`\`
+
+脚本未经 Authenticode 签名，SmartScreen 可能警告；NSSM 备选见仓库 \`docs/ops/windows-service-and-signing.md\`。
 
 ## 环境变量配置
 
@@ -74,7 +89,7 @@ REMOTE_AGENT_DATA_DIR=$HOME/.remote-agent
 
 ## Windows 限制
 
-- launchd 服务安装不可用（使用手动启动或 NSSM 包装为 Windows 服务）
+- macOS \`service:install\`（launchd）不可用；请使用本包内任务计划脚本或手动 \`start-gateway.bat\`
 - Cursor 历史路径：\`%APPDATA%\\Cursor\`
 - Claude 历史路径：\`%USERPROFILE%\\.claude\`
 - Codex 历史路径：\`%USERPROFILE%\\.codex\`
@@ -180,9 +195,18 @@ node -e "const port = process.env.REMOTE_AGENT_PORT || '17821'; const host = pro
 
 writeFileSync(join(packageDir, "pair.bat"), pairScriptWin, "utf8");
 
+const windowsSetupSource = resolve(projectRoot, "scripts", "windows-setup");
+if (!existsSync(windowsSetupSource)) {
+  throw new Error(`Missing Windows setup scripts: ${windowsSetupSource}`);
+}
+for (const fileName of readdirSync(windowsSetupSource)) {
+  copyFileSync(join(windowsSetupSource, fileName), join(packageDir, fileName));
+}
+
 console.log(`✓ Package created: ${packageDir}`);
 console.log(`  - dist/ (compiled TypeScript)`);
 console.log(`  - package.json & package-lock.json`);
 console.log(`  - start-gateway.sh & start-gateway.bat`);
 console.log(`  - pair.sh & pair.bat`);
+console.log(`  - install-logon-task.ps1 / uninstall-logon-task.ps1 (unsigned)`);
 console.log(`  - README.md`);
