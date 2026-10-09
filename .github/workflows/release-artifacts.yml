@@ -16,7 +16,27 @@ jobs:
       matrix:
         os: [macos-latest, windows-latest]
         node-version: [22.x]
-    
+    # Map signing secrets to env once; step `if` must not reference secrets.* directly.
+    env:
+      WINDOWS_CODE_SIGNING_CERT: ${{ secrets.WINDOWS_CODE_SIGNING_CERT }}
+      WINDOWS_CODE_SIGNING_CERT_PASSWORD: ${{ secrets.WINDOWS_CODE_SIGNING_CERT_PASSWORD }}
+      SIGNTOOL_PATH: ${{ secrets.SIGNTOOL_PATH }}
+      WINDOWS_TIMESTAMP_URL: ${{ secrets.WINDOWS_TIMESTAMP_URL }}
+      AZURE_TRUSTED_SIGNING_ACCOUNT_NAME: ${{ secrets.AZURE_TRUSTED_SIGNING_ACCOUNT_NAME }}
+      AZURE_TRUSTED_SIGNING_CERT_PROFILE_NAME: ${{ secrets.AZURE_TRUSTED_SIGNING_CERT_PROFILE_NAME }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+      APPLE_DEVELOPER_ID_CERT_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERT_BASE64 }}
+      APPLE_DEVELOPER_ID_CERT_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERT_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_CODESIGN_IDENTITY: ${{ secrets.APPLE_CODESIGN_IDENTITY }}
+      APPLE_NOTARY_API_KEY_ID: ${{ secrets.APPLE_NOTARY_API_KEY_ID }}
+      APPLE_NOTARY_API_KEY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_API_KEY_ISSUER_ID }}
+      APPLE_NOTARY_API_KEY_BASE64: ${{ secrets.APPLE_NOTARY_API_KEY_BASE64 }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -54,33 +74,13 @@ jobs:
         run: node scripts/verify-windows-setup.mjs
 
       - name: Sign Windows gateway package (optional, Phase C)
-        if: runner.os == 'Windows' && (secrets.WINDOWS_CODE_SIGNING_CERT != '' || secrets.AZURE_TRUSTED_SIGNING_ACCOUNT_NAME != '')
+        if: runner.os == 'Windows' && (env.WINDOWS_CODE_SIGNING_CERT != '' || env.AZURE_TRUSTED_SIGNING_ACCOUNT_NAME != '')
         shell: pwsh
-        env:
-          WINDOWS_CODE_SIGNING_CERT: ${{ secrets.WINDOWS_CODE_SIGNING_CERT }}
-          WINDOWS_CODE_SIGNING_CERT_PASSWORD: ${{ secrets.WINDOWS_CODE_SIGNING_CERT_PASSWORD }}
-          SIGNTOOL_PATH: ${{ secrets.SIGNTOOL_PATH }}
-          WINDOWS_TIMESTAMP_URL: ${{ secrets.WINDOWS_TIMESTAMP_URL }}
-          AZURE_TRUSTED_SIGNING_ACCOUNT_NAME: ${{ secrets.AZURE_TRUSTED_SIGNING_ACCOUNT_NAME }}
-          AZURE_TRUSTED_SIGNING_CERT_PROFILE_NAME: ${{ secrets.AZURE_TRUSTED_SIGNING_CERT_PROFILE_NAME }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
         run: |
           ./scripts/ci/sign-windows.ps1 -PackageDir macos-agent-gateway/packages/remote-agent-gateway -RequireSecrets
 
       - name: Sign macOS gateway binaries (optional, Phase C)
-        if: runner.os != 'Windows' && secrets.APPLE_DEVELOPER_ID_CERT_BASE64 != ''
-        env:
-          APPLE_DEVELOPER_ID_CERT_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERT_BASE64 }}
-          APPLE_DEVELOPER_ID_CERT_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERT_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          APPLE_CODESIGN_IDENTITY: ${{ secrets.APPLE_CODESIGN_IDENTITY }}
-          APPLE_NOTARY_API_KEY_ID: ${{ secrets.APPLE_NOTARY_API_KEY_ID }}
-          APPLE_NOTARY_API_KEY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_API_KEY_ISSUER_ID }}
-          APPLE_NOTARY_API_KEY_BASE64: ${{ secrets.APPLE_NOTARY_API_KEY_BASE64 }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        if: runner.os != 'Windows' && env.APPLE_DEVELOPER_ID_CERT_BASE64 != ''
         run: |
           bash scripts/ci/notarize-macos.sh --package-dir macos-agent-gateway/packages/remote-agent-gateway --require-secrets
       
@@ -92,16 +92,7 @@ jobs:
           ls -lh *.tar.gz
 
       - name: Notarize macOS installer package (optional, Phase C)
-        if: runner.os != 'Windows' && (secrets.APPLE_NOTARY_API_KEY_ID != '' || secrets.APPLE_ID != '')
-        env:
-          APPLE_DEVELOPER_ID_CERT_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERT_BASE64 }}
-          APPLE_DEVELOPER_ID_CERT_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERT_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          APPLE_NOTARY_API_KEY_ID: ${{ secrets.APPLE_NOTARY_API_KEY_ID }}
-          APPLE_NOTARY_API_KEY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_API_KEY_ISSUER_ID }}
-          APPLE_NOTARY_API_KEY_BASE64: ${{ secrets.APPLE_NOTARY_API_KEY_BASE64 }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        if: runner.os != 'Windows' && (env.APPLE_NOTARY_API_KEY_ID != '' || env.APPLE_ID != '')
         run: |
           PKG="macos-agent-gateway/packages/remote-agent-gateway-macos.pkg"
           if [ -f "$PKG" ]; then

@@ -21,5 +21,6 @@ test("release workflow references optional signing gates", () => {
   const workflow = readFileSync(join(repoRoot, ".github", "workflows", "release-artifacts.yml"), "utf8");
   assert.match(workflow, /sign-windows\.ps1/);
   assert.match(workflow, /notarize-macos\.sh/);
-  assert.match(workflow, /secrets\.WINDOWS_CODE_SIGNING_CERT/);
+  assert.match(workflow, /env\.WINDOWS_CODE_SIGNING_CERT/);
+  assert.doesNotMatch(workflow, /if:[^\n]*secrets\./);
 });
