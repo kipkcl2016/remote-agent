@@ -9,6 +9,7 @@
     "test:runtime": "playwright test",
     "test:ios:simulator": "bash scripts/test-ios-simulator-e2e.sh",
     "test:sites": "node --test tests/sites-worker.test.mjs",
+    "test:gateway-stream": "node --experimental-strip-types --test tests/gateway-session-stream.test.mjs",
     "predev": "npm run check:runtime",
     "dev": "vite",
     "prebuild": "npm run check:runtime",

@@ -66,7 +66,7 @@ stateDiagram-v2
   cancelled --> queued: continue when nativeId exists
 ```
 
-网关 API 实际以“没有活动进程且存在 `nativeId`”作为继续条件；移动端当前只从已完成/失败/映射后的取消态开放继续。并发继续必须返回错误。
+网关 API 实际以“没有活动进程且存在 `nativeId`”作为继续条件；移动端从已完成/失败/已取消开放继续。并发继续必须返回错误。
 
 ### 2.4 事件
 
@@ -276,7 +276,7 @@ type PairedDevice = {
 
 ### 6.1 JSON 拉取
 
-`GET /v1/sessions/:id/events?after=N` 返回 `seq > N` 的升序事件。当前默认最多 500 条，store 上限 2,000 条。移动端保存本地最大 seq 并轮询。
+`GET /v1/sessions/:id/events?after=N` 返回 `seq > N` 的升序事件。当前默认最多 500 条，store 上限 2,000 条。移动端保存本地最大 `seq`；活动网关会话优先使用 SSE，并在 SSE 不可用时回退 JSON 轮询。
 
 ### 6.2 SSE
 
@@ -296,7 +296,7 @@ data: <完整 SessionEvent JSON>
 - 连接关闭时必须取消订阅和 heartbeat。
 - SSE 的 `data` 是完整 `SessionEvent`，不是仅 payload。
 
-移动端接入 SSE 前必须补：断线重连、游标恢复、重复事件去重、认证失效、前后台切换测试；在此之前 `STREAM-002` 保持受限实现。
+移动端消费 SSE 时必须：用 `after` / `Last-Event-ID` 恢复游标、按 `seq` 去重、在连接失败后重连或回退轮询，并在认证失效时停止订阅。前后台切换与长时间后台的恢复行为仍属演进项。
 
 ## 7. 持久化契约
 

@@ -73,7 +73,8 @@ public class SecureCredentialsPlugin: CAPPlugin, CAPBridgedPlugin {
         guard let key = call.getString("key"),
               key == "remote-agent.gateway.url" ||
               key == "remote-agent.gateway.token" ||
-              key == "remote-agent.gateway.connections.v1" else {
+              key == "remote-agent.gateway.connections.v1" ||
+              key == "remote-agent.app.preferences.v1" else {
             call.reject("Unsupported credential key", "INVALID_KEY")
             return nil
         }

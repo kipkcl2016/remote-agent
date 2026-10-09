@@ -22,7 +22,7 @@
 | `PAIR-002` | 已实现 | `Prototype.tsx#pairDevice`、`credential-store.ts`、`POST /v1/pairing/confirm` | `gateway.test.ts`：API 成功；`product-flow.spec.ts`：添加第二台 Mac、保存并自动同步、旧凭据迁移；iOS XCUITest：动态配对码成功、错误码拒绝且输入/日志遮罩 | A | 同 origin 更新 token、8 条上限；Android 原生错误/过期码复核 |
 | `DEVICE-001` | 已实现 | `GatewayStore.listDevices/authenticateDevice`、设备 BottomSheet | `gateway.test.ts`：列表/current/lastSeen 鉴权路径 | P | 多设备排序、当前设备标记、最后使用时间、空列表 |
 | `DEVICE-002` | 已实现 | `removeGatewayConnection`、`disconnectDevice`、当前授权撤销后的后备连接切换 | `product-flow.spec.ts`：多连接移除后切换；iOS XCUITest：移除当前项自动回退、移除最后一项回到单一入口 | P | 服务端授权保留与 Android 真机复核 |
-| `DEVICE-003` | 已实现 | `/v1/devices/:id/revoke`、`revokePairedDevice` | `gateway.test.ts`：撤销当前 token 后 401 | P | 撤销其他设备、撤销当前设备、失败提示；确认无二次确认仍符合本期规格 |
+| `DEVICE-003` | 已实现 | `/v1/devices/:id/revoke`、`revokePairedDevice`、撤销确认 UI | `gateway.test.ts`：撤销当前 token 后 401；`product-flow.spec.ts`：二次确认后撤销 | P | 撤销其他设备、撤销当前设备、失败提示、误触返回 |
 | `DEVICE-004` | 已实现 | `credential-store.ts` 版本化连接库/activeId、设备页连接选择器、按 origin 的摘要缓存 | `product-flow.spec.ts`：旧凭据迁移、添加第二台、切换、重载默认恢复、缓存隔离、移除回退；iOS XCUITest：Keychain 保存两台 Mac、切换、进程终止后恢复 activeId | A | 失败连接、同 origin 更新 token、8 条上限；Android 冷启动与安全存储复核 |
 
 ## 3. Agent、权限和生命周期
@@ -42,14 +42,14 @@
 | `SESSION-001` | 已实现 | `loadRemoteState`、稳定身份去重、原始 `updatedAt` 排序、网关每 Agent/项目 20 条上限、`GatewayStore.listSessions`、`NativeHistoryService.list` | `product-flow.spec.ts`：重复 ID、最近/项目 20 条上限；`history.test.ts` 三 Agent；`codex-threads.test.ts` 标题/缓存 | A | 网关+原生合并、两级去重、原始时间排序、2,000 条与多项目边界 |
 | `SESSION-002` | 已实现 | `visibleSessions`、filters、statusSummary、`SessionStateIndicator`、未读持久化、标题栏内搜索与浏览方式切换 | `product-flow.spec.ts`：三 Agent 过滤、搜索、状态汇总、两行紧凑会话行、运行旋转状态、完成未读蓝点及查看后隐藏、紧凑标题操作区；iOS XCUITest：Codex Tab、标题搜索和新会话入口状态 | A | 标题、项目、模式、Agent 搜索；清空/关闭搜索；空结果、进行中和未读准确；运行/未读/已读完成三态；窄屏操作区无溢出 |
 | `SESSION-003` | 已实现 | 统计行右侧 `new-session-button`、Tab 到 `draftAgent` 映射、`createSession`、项目下拉预填 cwd、权限三选一、`POST /v1/sessions`、`GatewayService.startSession` | `gateway.test.ts`：创建生命周期；`product-flow.spec.ts`：按钮与统计同行、各 Agent Tab/搜索态持续显示、Tab 默认 Agent、项目下拉填 cwd、权限选完全允许、创建后进入详情；iOS XCUITest：原生表单创建后直接进入全屏详情 | A | 全部/Cursor/Claude/Codex 默认值，搜索及最近/项目视图；项目下拉与手填 cwd；受限/自动/完全允许；三 Agent、空 prompt、缺 cwd、越界 cwd、未安装 CLI |
-| `SESSION-004` | 已实现 | 安全区详情标题栏、标题内联更新时间/状态/分支、用户问题 sticky 锚点、无断层吸顶边界、两行折叠与方向覆盖动画、近底部自动跟随保护、网关事件轮询、原生 snapshot 轮询、Markdown、`appendGatewayEvents`、session/events APIs | `product-flow.spec.ts`：标题内更新时间且无独立元信息行、标题与内容无断层、普通/运行中吸顶边界坐标、长问题折叠/展开/切换复位、多轮问题正向/反向吸顶覆盖、减少动态效果、离底后不被新输出拉回、Markdown/GFM、网关和原生 Codex 流式结果、终态停止刷新、默认折叠的 stderr 诊断；`gateway.test.ts`：事件存取与原生 snapshot；iOS XCUITest：全屏安全 Markdown 与流式结果可见 | P | user/assistant/delta/tool/approval/error/empty；长问题、小屏、活动状态条偏移、增量无重复、终态停止轮询、断网错误与恢复 |
+| `SESSION-004` | 已实现 | 安全区详情标题栏、标题内联更新时间/状态/分支、用户问题 sticky 锚点、无断层吸顶边界、两行折叠与方向覆盖动画、近底部自动跟随保护、网关 SSE（轮询回退）、原生 snapshot 轮询、Markdown、`appendGatewayEvents`、session/events APIs | `product-flow.spec.ts`：标题内更新时间且无独立元信息行、标题与内容无断层、普通/运行中吸顶边界坐标、长问题折叠/展开/切换复位、多轮问题正向/反向吸顶覆盖、减少动态效果、离底后不被新输出拉回、Markdown/GFM、网关 SSE/原生 Codex 流式结果、终态停止刷新、默认折叠的 stderr 诊断；`gateway.test.ts`：事件存取与原生 snapshot；iOS XCUITest：全屏安全 Markdown 与流式结果可见 | P | user/assistant/delta/tool/approval/error/empty；长问题、小屏、活动状态条偏移、增量无重复、终态停止订阅/轮询、断网错误与恢复 |
 | `SESSION-005` | 已实现 | `sendDetailReply`、continue API、`GatewayService.continueSession` | `gateway.test.ts`：继续启动；`codex.test.ts`：续接允许非 Git cwd；`product-flow.spec.ts`：全屏继续并合并 delta；iOS XCUITest：详情内继续输入并显示后续结果 | A | running/无 nativeId 禁用；completed/failed/cancelled 续接；并发请求拒绝；权限/cwd 沿用 |
-| `SESSION-006` | 受限实现 | cancel API、`GatewayService.cancelSession` | 无直接 cancel HTTP/进程测试；移动端无入口 | M | API 取消活动进程、重复/非活动取消失败、状态和事件一致；UI 限制仍明确 |
+| `SESSION-006` | 已实现 | cancel API、`GatewayService.cancelSession`、`cancelRunningSession`、取消态 UI | `gateway.test.ts`：会话生命周期；`product-flow.spec.ts`：详情取消与「已取消」展示 | P | API 取消活动进程、重复/非活动取消失败、状态和事件一致 |
 | `SESSION-007` | 已实现 | `ProjectResolver`、会话 `projectId/projectName`、移动端项目视图、同名项目路径消歧与折叠状态 | `project-resolver.test.ts`：Git 子目录、同名路径、越界与已删除 cwd；`history.test.ts`/`gateway.test.ts`：项目字段；`product-flow.spec.ts`：多 Agent 分组、折叠记忆、cwd 预填、benchmark 同名 `workspace` 保持独立且显示 Agent/任务/套件标签 | A | 真实三 Agent 历史、项目数量/排序、同名 basename 消歧、筛选/搜索、折叠与项目内新会话；Android/iOS 小屏布局 |
 | `SESSION-008` | 已实现 | `readSessionCache/writeSessionCache`、按服务端 origin 分键、同步状态与重试 | `product-flow.spec.ts`：同 URL 先缓存后替换、两条保存连接分别缓存、不同 URL 隔离、失败保留与重试、缓存无 token/cwd；iOS XCUITest：终止进程后先显示当前 Mac 缓存与 loading，再异步刷新 | A | 离线旧缓存、存储空间受限；确认真实设备备份策略 |
 | `FILE-001` | 已实现 | `session-files.ts`、会话/原生历史 file read 路由、Markdown 本机链接桥接、Blob 预览页 | `session-files.test.ts`：相对/绝对/`file://`、符号链接逃逸、目录、缺失、超限；`gateway.test.ts`：认证二进制响应；`product-flow.spec.ts`：内联图片、文本预览、缺失错误与返回 | P | PNG/JPEG/PDF/文本/未知二进制；Android/iOS 下载行为、20 MiB 边界、断网重试、TCC 错误 |
 | `STREAM-001` | 已实现 | `GatewayStore.addEvent/listEvents`、JSON events route | `gateway.test.ts`：持久化事件和 JSON 获取 | A | `after` 游标、升序、上限、坏 payload 容错、重启后可读 |
-| `STREAM-002` | 受限实现 | `openEventStream`、`EventHub` | `gateway.test.ts`：SSE 建连/首块；未覆盖补发、heartbeat、实时事件、重连 | P | after/Last-Event-ID 补发、新事件、15s heartbeat、关闭清理；移动端未消费的限制明确 |
+| `STREAM-002` | 已实现 | `openEventStream`、`EventHub`、`gateway-session-stream.ts` | `gateway.test.ts`：SSE 建连/首块；`gateway-session-stream.test.mjs`：SSE 解析；`product-flow.spec.ts`：详情 SSE 建连 | P | after/Last-Event-ID 补发、新事件、15s heartbeat、关闭清理、轮询回退 |
 | `APPROVAL-001` | 界面占位 | parser approval 分支、`GatewayService.record`、移动端 approval 文案 | 无 approval 专项测试 | — | 只能展示等待 Mac，不出现手机批准/拒绝入口，不把 ask 描述为完整审批 |
 
 ## 5. 原生历史
@@ -67,8 +67,8 @@
 | `MOBILE-001` | 已实现 | `src/mobile/`、runtime lock、`App.tsx`、Capacitor `SystemBars: DARK`、原生 mobile viewport/content mode、iPad ≥700px 可读宽度约束 | `mobile-runtime.spec.ts` 8 项：Carousel、拖动、sheet、键盘、Pixel safe area、FlowStack；`check:runtime` 28 文件；安卓真机截图：深色背景上的浅色时间/网络/电量；iOS XCUITest/截图：402pt iPhone 无横向裁切、设备 sheet 显式关闭；iPad (A16) 横竖屏主控件可见且 Release 冷启动通过 | A | iPhone/Pixel 10/iPad，浅色/深色系统主题下的系统栏可见性、触摸/鼠标、横竖屏/窗口缩放、键盘/安全区、scroll/sheet、设备切换和视觉回归 |
 | `MOBILE-002` | 已实现 | `credential-store.ts`、Swift/Java plugin 固定 key/32 KiB 上限、原生注册 | Web 迁移/切换产品流；iOS XCUITest：首次为空、保存后可读、进程重启后恢复、切换与逐项清除；Swift/Java 原生构建 | P | Android：空/写/读/迁移/切换/清除；两端坏密文/非法 key；确认日志和备份策略无明文 |
 | `MOBILE-003` | 已实现 | `@capacitor/app` backButton、`closeSessionDetail` | `product-flow.spec.ts`：可视返回；Android 真机 ADB 返回键人工验收 | P | 键盘/sheet/详情/搜索逐层返回；首页最小化；Android 返回手势；iOS/Web 无回归 |
-| `SETTING-001` | 受限实现 | `alwaysConfirm`、设置 toggle、create/resume body | 无直接测试 permission body 或刷新行为 | M | 默认 ask、关闭后 auto、新建/原生续接都生效、刷新恢复默认且文案准确 |
-| `SETTING-002` | 界面占位 | `notifications` toggle | 无系统行为和自动化 | — | 只验证 toggle 不崩溃；不得宣称已通知。接入通知前新增功能验收和平台测试 |
+| `SETTING-001` | 已实现 | `app-preferences.ts`、`alwaysConfirm`、设置 toggle、create/resume body | `product-flow.spec.ts`：偏好持久化与重载 | P | 默认 ask、关闭后 auto、新建/原生续接都生效、刷新后保持 |
+| `SETTING-002` | 受限实现 | `notifications` toggle、`app-preferences.ts` | `product-flow.spec.ts`：开关持久化 | — | 只验证 toggle 不崩溃；不得宣称已通知。接入通知前新增功能验收和平台测试 |
 | `DIST-001` | 已实现 | Vite、prepare script、worker、hosting JSON | `sites-worker.test.mjs` 4 项；build | A | 静态资源、未知 GET app fallback、API/write 不 fallback、四个必需产物存在 |
 | `OPS-001` | 已实现 | `service-manager.ts`、launchd plist/runtime copy | `service-manager.test.ts` 3 项：转义/0.0.0.0、TCC、路径 | P | 获授权后 install/status/restart/uninstall、CLI PATH、私网连接、数据保留和 TCC 提示 |
 
