@@ -298,6 +298,17 @@
   color: #fff;
 }
 
+.agent-filters button.is-disabled,
+.agent-filters button:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.agent-filters button.is-disabled:active,
+.agent-filters button:disabled:active {
+  transform: none;
+}
+
 .agent-filter-copy {
   display: grid;
   min-width: 0;
@@ -325,6 +336,25 @@
 .agent-filter-quota.is-unavailable,
 .agent-filter-quota.is-offline {
   color: #727d90;
+}
+
+.agent-filter-install {
+  overflow: hidden;
+  max-width: 100%;
+  color: #6f7d95;
+  font-size: 8px;
+  font-weight: 620;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-filter-install.is-missing {
+  color: #c07a62;
+}
+
+.agent-filters button.is-selected .agent-filter-install {
+  color: rgba(255, 255, 255, 0.78);
 }
 
 .agent-filters button.is-selected .agent-filter-quota {
@@ -1879,6 +1909,32 @@ button.markdown-remote-image {
 .sheet-agent-picker button .agent-icon svg {
   width: 17px;
   height: 17px;
+}
+
+.sheet-agent-picker button.is-disabled,
+.sheet-agent-picker button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.sheet-agent-picker-copy {
+  display: grid;
+  gap: 2px;
+  justify-items: center;
+  min-width: 0;
+}
+
+.sheet-agent-picker-label {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.sheet-agent-picker-copy small {
+  color: #6f7d95;
+  font-size: 9px;
+  font-weight: 620;
+  line-height: 1.1;
 }
 
 .sheet-agent-picker button.is-selected {

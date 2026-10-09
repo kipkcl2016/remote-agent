@@ -271,6 +271,40 @@ async function handle(gateway, request, response) {
     send(response, 200, { data: currentDevice() }, origin);
     return;
   }
+  if (url.pathname === "/v1/agents" && request.method === "GET") {
+    send(response, 200, {
+      data: [
+        {
+          kind: "cursor",
+          label: "Cursor",
+          command: "cursor-agent",
+          installed: true,
+          version: "2026.01.0",
+          supportsNativeHistory: true,
+          permissionModes: ["plan", "ask", "auto", "full"],
+        },
+        {
+          kind: "claude",
+          label: "Claude Code",
+          command: "claude",
+          installed: true,
+          version: "1.0.0",
+          supportsNativeHistory: true,
+          permissionModes: ["plan", "ask", "auto", "full"],
+        },
+        {
+          kind: "codex",
+          label: "Codex",
+          command: "codex",
+          installed: true,
+          version: "0.9.0",
+          supportsNativeHistory: true,
+          permissionModes: ["plan", "ask", "auto", "full"],
+        },
+      ],
+    }, origin);
+    return;
+  }
   if (url.pathname === "/v1/agents/usage" && request.method === "GET") {
     send(response, 200, {
       data: [
