@@ -3,6 +3,7 @@ import { access } from "node:fs/promises";
 import { delimiter, join } from "node:path";
 import { spawn } from "node:child_process";
 import type { NativeHistorySession } from "./types.js";
+import { GATEWAY_VERSION } from "./version.js";
 
 const THREAD_CACHE_MS = 15_000;
 const THREAD_LIST_TIMEOUT_MS = 12_000;
@@ -180,7 +181,7 @@ async function readCodexThreads(): Promise<NativeHistorySession[]> {
           clientInfo: {
             name: "remote_agent_gateway",
             title: "Remote Agent Gateway",
-            version: "0.1.0",
+            version: GATEWAY_VERSION,
           },
           capabilities: {},
         },

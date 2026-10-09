@@ -7,6 +7,7 @@ import { GatewayService } from "./service.js";
 import { NativeHistoryService } from "./history.js";
 import { readSessionFile, SessionFileError, type SessionFile } from "./session-files.js";
 import type { GatewayConfig } from "./config.js";
+import { GATEWAY_VERSION } from "./version.js";
 import {
   isAgentKind,
   isPermissionMode,
@@ -46,7 +47,7 @@ export function createGatewayHttpServer(options: GatewayHttpOptions): Server {
           data: {
             status: "ok",
             hostname: hostname(),
-            version: "0.1.0",
+            version: GATEWAY_VERSION,
             now: new Date().toISOString(),
           },
         });
