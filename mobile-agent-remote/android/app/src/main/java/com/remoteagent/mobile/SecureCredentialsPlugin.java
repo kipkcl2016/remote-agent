@@ -81,7 +81,8 @@ public class SecureCredentialsPlugin extends Plugin {
         String key = call.getString("key");
         if (!"remote-agent.gateway.url".equals(key)
             && !"remote-agent.gateway.token".equals(key)
-            && !"remote-agent.gateway.connections.v1".equals(key)) {
+            && !"remote-agent.gateway.connections.v1".equals(key)
+            && !"remote-agent.app.preferences.v1".equals(key)) {
             call.reject("Unsupported credential key", "INVALID_KEY");
             return null;
         }

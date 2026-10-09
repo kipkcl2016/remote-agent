@@ -55,9 +55,11 @@ import {
   type GatewayConnectionStore,
   type SavedGatewayConnection,
 } from "./credential-store";
+import { loadAppPreferences, saveAppPreferences } from "./app-preferences";
+import { openGatewaySessionEventStream, type GatewaySessionStreamHandle } from "./gateway-session-stream";
 
 type AgentName = "Cursor" | "Claude" | "Codex";
-type SessionStatus = "running" | "attention" | "done" | "failed";
+type SessionStatus = "running" | "attention" | "done" | "cancelled" | "failed";
 type SessionView = "recent" | "projects";
 type SessionSyncState = "idle" | "loading" | "refreshing" | "fresh" | "stale" | "error";
 type PermissionMode = "plan" | "ask" | "auto" | "full";
@@ -365,6 +367,8 @@ export default function Prototype() {
   const [pairingCode, setPairingCode] = useState("");
   const [workingDirectory, setWorkingDirectory] = useState("");
   const [deviceName, setDeviceName] = useState("Mac");
+  const [pendingRevokeDevice, setPendingRevokeDevice] = useState<PairedDeviceApi | null>(null);
+  const [detailCancelling, setDetailCancelling] = useState(false);
   const [pairedDevices, setPairedDevices] = useState<PairedDeviceApi[]>([]);
   const [agentUsages, setAgentUsages] = useState<AgentUsageApi[] | null>(null);
   const [remoteOnline, setRemoteOnline] = useState(false);
@@ -391,6 +395,26 @@ export default function Prototype() {
   useEffect(() => {
     selectedSessionRef.current = selectedSession;
   }, [selectedSession]);
+
+  useEffect(() => {
+    if (!deviceOpen) setPendingRevokeDevice(null);
+  }, [deviceOpen]);
+
+  useEffect(() => {
+    let active = true;
+    loadAppPreferences()
+      .then((preferences) => {
+        if (!active) return;
+        setAlwaysConfirm(preferences.defaultRestrictedExecution);
+        setNotifications(preferences.agentStatusNotifications);
+      })
+      .catch(() => {
+        // Preferences are optional UI state and must not block startup.
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -828,7 +852,9 @@ export default function Prototype() {
     detailFollowOutputRef.current = true;
     detailScrollTopRef.current = 0;
     detailPendingScrollRestoreRef.current = null;
-    if (openedSession.status === "done") markSessionRead(url, openedSession);
+    if (openedSession.status === "done" || openedSession.status === "cancelled") {
+      markSessionRead(url, openedSession);
+    }
     selectedSessionRef.current = openedSession;
     setSelectedSession(openedSession);
     if (openedSession !== session) {
@@ -896,58 +922,174 @@ export default function Prototype() {
     const session = selectedSession;
     if (!session || session.source !== "gateway" || !remoteOnline || !gatewayToken) return;
     let active = true;
-    let timer: number | undefined;
-    let continuePolling = session.status === "running" || session.status === "attention";
+    let pollTimer: number | undefined;
+    let metadataTimer: number | undefined;
+    let stream: GatewaySessionStreamHandle | null = null;
+    let pollFallback = false;
+    const url = normalizeGatewayUrl(gatewayUrl);
+    const sessionPath = `/v1/sessions/${encodeURIComponent(session.id)}`;
+    const eventsPath = `${sessionPath}/events?after=${detailEventCursor.current}`;
 
-    const synchronize = async () => {
+    const isLiveStatus = (status: SessionStatus | undefined) => (
+      status === "running" || status === "attention"
+    );
+
+    const applySessionSnapshot = (remoteSession: GatewaySessionApi) => {
+      const mapped = mapGatewaySession(remoteSession);
+      const viewedSession = mapped.status === "done" || mapped.status === "cancelled"
+        ? { ...mapped, unread: false }
+        : mapped;
+      if (viewedSession.status === "done" || viewedSession.status === "cancelled") {
+        markSessionRead(url, viewedSession);
+      }
+      selectedSessionRef.current = viewedSession;
+      setSelectedSession((current) => current?.id === viewedSession.id
+        ? sameAgentSession(current, viewedSession) ? current : viewedSession
+        : current);
+      setSessions((current) => upsertSessionAtFront(current, viewedSession));
+      return viewedSession;
+    };
+
+    const applyGatewayEvents = (events: GatewayEventApi[]) => {
+      const fresh = events.filter((event) => event.seq > detailEventCursor.current);
+      if (!fresh.length) return false;
+      detailEventCursor.current = Math.max(
+        detailEventCursor.current,
+        ...fresh.map((event) => event.seq),
+      );
+      if (!detailFollowOutputRef.current && detailStreamRef.current) {
+        detailPendingScrollRestoreRef.current = detailStreamRef.current.scrollTop;
+      }
+      setDetailMessages((current) => appendGatewayEvents(current, fresh));
+      return fresh.some((event) => (
+        event.type === "status" || event.type === "completed" || event.type === "error"
+      ));
+    };
+
+    const refreshSessionSnapshot = async () => {
+      const remoteSession = await gatewayRequest<GatewaySessionApi>(
+        gatewayUrl,
+        sessionPath,
+        { token: gatewayToken },
+      );
+      if (!active) return null;
+      return applySessionSnapshot(remoteSession);
+    };
+
+    const pollSynchronize = async () => {
       try {
         const [events, remoteSession] = await Promise.all([
           gatewayRequest<GatewayEventApi[]>(
             gatewayUrl,
-            `/v1/sessions/${encodeURIComponent(session.id)}/events?after=${detailEventCursor.current}`,
+            `${sessionPath}/events?after=${detailEventCursor.current}`,
             { token: gatewayToken },
           ),
-          gatewayRequest<GatewaySessionApi>(
-            gatewayUrl,
-            `/v1/sessions/${encodeURIComponent(session.id)}`,
-            { token: gatewayToken },
-          ),
+          gatewayRequest<GatewaySessionApi>(gatewayUrl, sessionPath, { token: gatewayToken }),
         ]);
         if (!active) return;
-        if (events.length) {
-          detailEventCursor.current = Math.max(
-            detailEventCursor.current,
-            ...events.map((event) => event.seq),
-          );
-          if (!detailFollowOutputRef.current && detailStreamRef.current) {
-            detailPendingScrollRestoreRef.current = detailStreamRef.current.scrollTop;
-          }
-          setDetailMessages((current) => appendGatewayEvents(current, events));
-        }
-        const mapped = mapGatewaySession(remoteSession);
-        const viewedSession = mapped.status === "done" ? { ...mapped, unread: false } : mapped;
-        if (viewedSession.status === "done") markSessionRead(normalizeGatewayUrl(gatewayUrl), viewedSession);
-        selectedSessionRef.current = viewedSession;
-        continuePolling = viewedSession.status === "running" || viewedSession.status === "attention";
-        setSelectedSession((current) => current?.id === viewedSession.id
-          ? sameAgentSession(current, viewedSession) ? current : viewedSession
-          : current);
-        setSessions((current) => upsertSessionAtFront(current, viewedSession));
+        applyGatewayEvents(events);
+        const viewedSession = applySessionSnapshot(remoteSession);
         setDetailError(null);
+        if (active && pollFallback && isLiveStatus(viewedSession.status)) {
+          pollTimer = window.setTimeout(() => void pollSynchronize(), ACTIVE_SESSION_POLL_MS);
+        }
       } catch (error) {
         if (active) setDetailError(errorMessage(error));
+        if (active && pollFallback) {
+          pollTimer = window.setTimeout(() => void pollSynchronize(), ACTIVE_SESSION_POLL_MS);
+        }
       } finally {
         if (active) setDetailLoading(false);
-        if (active && continuePolling) {
-          timer = window.setTimeout(() => void synchronize(), ACTIVE_SESSION_POLL_MS);
-        }
       }
     };
 
-    void synchronize();
+    const startPollingFallback = () => {
+      if (pollFallback) return;
+      pollFallback = true;
+      if (metadataTimer !== undefined) {
+        window.clearInterval(metadataTimer);
+        metadataTimer = undefined;
+      }
+      stream?.close();
+      stream = null;
+      void pollSynchronize();
+    };
+
+    const startSessionMetadataPolling = () => {
+      if (metadataTimer !== undefined) window.clearInterval(metadataTimer);
+      metadataTimer = window.setInterval(() => {
+        if (!active || pollFallback) return;
+        void refreshSessionSnapshot().catch(() => undefined);
+      }, ACTIVE_SESSION_POLL_MS);
+    };
+
+    const startEventStream = () => {
+      if (pollFallback || !active) return;
+      stream?.close();
+      startSessionMetadataPolling();
+      stream = openGatewaySessionEventStream({
+        baseUrl: url,
+        sessionId: session.id,
+        token: gatewayToken,
+        getAfterSeq: () => detailEventCursor.current,
+        shouldContinue: () => active
+          && selectedSessionRef.current?.id === session.id
+          && isLiveStatus(selectedSessionRef.current?.status),
+        callbacks: {
+          onGatewayEvent: (payload) => {
+            const event = payload as GatewayEventApi;
+            if (!event || typeof event.seq !== "number") return;
+            const needsSnapshot = applyGatewayEvents([event]);
+            if (needsSnapshot) void refreshSessionSnapshot().catch(() => undefined);
+          },
+          onStreamError: () => {
+            // Transient SSE errors are retried; persistent failures fall back to polling.
+          },
+          onStreamClosed: () => {
+            if (!active) return;
+            startPollingFallback();
+          },
+        },
+      });
+    };
+
+    const bootstrap = async () => {
+      try {
+        if (isLiveStatus(session.status)) {
+          const remoteSession = await gatewayRequest<GatewaySessionApi>(
+            gatewayUrl,
+            sessionPath,
+            { token: gatewayToken },
+          );
+          if (!active) return;
+          const viewedSession = applySessionSnapshot(remoteSession);
+          setDetailError(null);
+          if (isLiveStatus(viewedSession.status)) startEventStream();
+        } else {
+          const [events, remoteSession] = await Promise.all([
+            gatewayRequest<GatewayEventApi[]>(gatewayUrl, eventsPath, { token: gatewayToken }),
+            gatewayRequest<GatewaySessionApi>(gatewayUrl, sessionPath, { token: gatewayToken }),
+          ]);
+          if (!active) return;
+          applyGatewayEvents(events);
+          applySessionSnapshot(remoteSession);
+          setDetailError(null);
+        }
+      } catch (error) {
+        if (!active) return;
+        setDetailError(errorMessage(error));
+        if (isLiveStatus(session.status)) startPollingFallback();
+      } finally {
+        if (active) setDetailLoading(false);
+      }
+    };
+
+    void bootstrap();
     return () => {
       active = false;
-      if (timer !== undefined) window.clearTimeout(timer);
+      stream?.close();
+      if (pollTimer !== undefined) window.clearTimeout(pollTimer);
+      if (metadataTimer !== undefined) window.clearInterval(metadataTimer);
     };
   }, [
     gatewayToken,
@@ -1230,7 +1372,12 @@ export default function Prototype() {
       setDetailError("此原生历史仅支持浏览，无法继续会话");
       return;
     }
-    if (currentSession.source === "gateway" && currentSession.status !== "done" && currentSession.status !== "failed") {
+    if (
+      currentSession.source === "gateway"
+      && currentSession.status !== "done"
+      && currentSession.status !== "cancelled"
+      && currentSession.status !== "failed"
+    ) {
       setDetailError("当前 Agent 仍在运行，请等待本轮完成后继续输入");
       return;
     }
@@ -1270,6 +1417,34 @@ export default function Prototype() {
       setDetailError(errorMessage(error));
     } finally {
       setDetailSending(false);
+    }
+  };
+
+  const cancelRunningSession = async () => {
+    const currentSession = selectedSession;
+    if (!currentSession || currentSession.source !== "gateway") return;
+    if (!remoteOnline || !gatewayToken) return;
+    if (currentSession.status !== "running" && currentSession.status !== "attention") return;
+    setDetailCancelling(true);
+    setDetailError(null);
+    try {
+      const remoteSession = await gatewayRequest<GatewaySessionApi>(
+        gatewayUrl,
+        `/v1/sessions/${encodeURIComponent(currentSession.id)}/cancel`,
+        { method: "POST", token: gatewayToken },
+      );
+      const mapped = mapGatewaySession(remoteSession);
+      const viewedSession = { ...mapped, unread: false };
+      markSessionRead(normalizeGatewayUrl(gatewayUrl), viewedSession);
+      selectedSessionRef.current = viewedSession;
+      setSelectedSession(viewedSession);
+      setSessions((current) => upsertSessionAtFront(current, viewedSession));
+      setDetailRefreshToken((current) => current + 1);
+      setNotice("会话已取消");
+    } catch (error) {
+      setDetailError(errorMessage(error));
+    } finally {
+      setDetailCancelling(false);
     }
   };
 
@@ -1343,6 +1518,7 @@ export default function Prototype() {
 
   const revokePairedDevice = async (device: PairedDeviceApi) => {
     if (!gatewayToken) return;
+    setPendingRevokeDevice(null);
     setConnectionBusy(true);
     try {
       await gatewayRequest<{ id: string; revoked: boolean }>(
@@ -1380,7 +1556,11 @@ export default function Prototype() {
         ? selectedSession.resumable
           && selectedSession.status !== "running"
           && selectedSession.status !== "attention"
-        : Boolean(selectedSession.nativeId) && (selectedSession.status === "done" || selectedSession.status === "failed")
+        : Boolean(selectedSession.nativeId) && (
+          selectedSession.status === "done"
+          || selectedSession.status === "cancelled"
+          || selectedSession.status === "failed"
+        )
     ),
   );
   const detailHasLiveIndicator = Boolean(
@@ -1761,10 +1941,26 @@ export default function Prototype() {
                 </small>
                 <span className="session-detail-subline-meta">
                   <SessionStateIndicator session={selectedSession} placement="detail" />
+                  {selectedSession.status === "cancelled" ? (
+                    <span className="session-detail-status" data-testid="session-status-cancelled">已取消</span>
+                  ) : null}
                   <time>{selectedSession.time}</time>
                 </span>
               </span>
             </span>
+            {selectedSession.source === "gateway"
+              && (selectedSession.status === "running" || selectedSession.status === "attention") ? (
+              <button
+                type="button"
+                className="session-detail-cancel"
+                onClick={() => void cancelRunningSession()}
+                disabled={detailCancelling || !remoteOnline}
+                aria-label="取消运行中的会话"
+                data-testid="session-cancel"
+              >
+                {detailCancelling ? <TbRefresh aria-hidden="true" /> : "取消"}
+              </button>
+            ) : null}
             <AgentIcon agent={selectedSession.agent} framed />
           </header>
 
@@ -2128,14 +2324,37 @@ export default function Prototype() {
                       <strong>{device.name}{device.current ? " · 当前设备" : ""}</strong>
                       <small>最后使用 {relativeTime(device.lastSeenAt)}</small>
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => void revokePairedDevice(device)}
-                      disabled={connectionBusy}
-                      aria-label={`撤销 ${device.name} 的授权`}
-                    >
-                      撤销
-                    </button>
+                    {pendingRevokeDevice?.id === device.id ? (
+                      <span className="revoke-confirm" data-testid={`revoke-confirm-${device.id}`}>
+                        <button
+                          type="button"
+                          className="is-muted"
+                          onClick={() => setPendingRevokeDevice(null)}
+                          disabled={connectionBusy}
+                        >
+                          返回
+                        </button>
+                        <button
+                          type="button"
+                          className="is-danger"
+                          onClick={() => void revokePairedDevice(device)}
+                          disabled={connectionBusy}
+                          data-testid={`revoke-confirm-action-${device.id}`}
+                        >
+                          确认撤销
+                        </button>
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setPendingRevokeDevice(device)}
+                        disabled={connectionBusy}
+                        aria-label={`撤销 ${device.name} 的授权`}
+                        data-testid={`revoke-device-${device.id}`}
+                      >
+                        撤销
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -2174,13 +2393,33 @@ export default function Prototype() {
             title="默认受限执行"
             description="新会话使用规划或只读模式"
             checked={alwaysConfirm}
-            onChange={() => setAlwaysConfirm((current) => !current)}
+            onChange={() => {
+              setAlwaysConfirm((current) => {
+                const next = !current;
+                void saveAppPreferences({
+                  version: 1,
+                  defaultRestrictedExecution: next,
+                  agentStatusNotifications: notifications,
+                });
+                return next;
+              });
+            }}
           />
           <SettingToggle
             title="Agent 状态通知"
             description="完成、失败或等待确认时提醒我"
             checked={notifications}
-            onChange={() => setNotifications((current) => !current)}
+            onChange={() => {
+              setNotifications((current) => {
+                const next = !current;
+                void saveAppPreferences({
+                  version: 1,
+                  defaultRestrictedExecution: alwaysConfirm,
+                  agentStatusNotifications: next,
+                });
+                return next;
+              });
+            }}
           />
           <div className="security-note">
             <TbLock aria-hidden="true" />
@@ -2480,6 +2719,7 @@ function sessionStateLabel(session: AgentSession): string {
   if (session.status === "running") return "运行中";
   if (session.status === "attention") return "等待确认";
   if (session.status === "failed") return "失败";
+  if (session.status === "cancelled") return "已取消";
   if (session.status === "done" && session.unread) return "已完成，未读";
   return "";
 }
@@ -2493,7 +2733,11 @@ function SessionStateIndicator({
 }) {
   const label = sessionStateLabel(session);
   if (!label) return null;
-  const state = session.status === "done" ? "unread" : session.status;
+  const state = session.status === "done"
+    ? "unread"
+    : session.status === "cancelled"
+      ? "cancelled"
+      : session.status;
   return (
     <span
       className={`session-state-indicator is-${state}`}
@@ -2890,9 +3134,11 @@ function mapGatewaySession(session: GatewaySessionApi): AgentSession {
       ? "failed"
       : session.status === "waiting_approval"
         ? "attention"
-      : session.status === "completed" || session.status === "cancelled"
-        ? "done"
-        : "running",
+        : session.status === "cancelled"
+          ? "cancelled"
+          : session.status === "completed"
+            ? "done"
+            : "running",
     updatedAt: session.updatedAt,
     time: relativeTime(session.updatedAt),
   };
@@ -3313,7 +3559,7 @@ function applySessionReadState(
   if (!existing) {
     const readRevisions = Object.fromEntries(
       sessions
-        .filter((session) => session.status === "done")
+        .filter((session) => session.status === "done" || session.status === "cancelled")
         .map((session) => [sessionIdentity(session), session.updatedAt]),
     );
     writeSessionReadState({
@@ -3329,7 +3575,9 @@ function applySessionReadState(
   const activeIdentity = activeSession ? sessionIdentity(activeSession) : "";
   const initializedAt = new Date(existing.initializedAt).getTime();
   const next = sessions.map((session) => {
-    if (session.status !== "done") return withUnreadState(session, false);
+    if (session.status !== "done" && session.status !== "cancelled") {
+      return withUnreadState(session, false);
+    }
     const identity = sessionIdentity(session);
     if (identity === activeIdentity) {
       if (existing.readRevisions[identity] !== session.updatedAt) {
@@ -3353,7 +3601,7 @@ function applySessionReadState(
 }
 
 function markSessionRead(url: string, session: AgentSession): void {
-  if (!url || session.status !== "done") return;
+  if (!url || (session.status !== "done" && session.status !== "cancelled")) return;
   const existing = readSessionReadState(url) ?? {
     version: 1 as const,
     url,
@@ -3496,7 +3744,11 @@ function isCachedSession(value: unknown): value is SessionCacheRecord["sessions"
     && typeof value.projectId === "string"
     && typeof value.project === "string"
     && typeof value.branch === "string"
-    && (value.status === "running" || value.status === "attention" || value.status === "done" || value.status === "failed")
+    && (value.status === "running"
+      || value.status === "attention"
+      || value.status === "done"
+      || value.status === "cancelled"
+      || value.status === "failed")
     && typeof value.updatedAt === "string";
 }
 

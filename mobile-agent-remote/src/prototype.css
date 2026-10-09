@@ -719,6 +719,10 @@
   color: #ff747f;
 }
 
+.session-state-indicator.is-cancelled {
+  color: #9aa3b5;
+}
+
 .session-chevron {
   width: 15px;
   height: 15px;
@@ -906,6 +910,44 @@
   border-radius: 13px;
 }
 
+.session-detail-cancel {
+  flex: 0 0 auto;
+  min-width: 52px;
+  padding: 8px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 116, 127, 0.45);
+  background: rgba(255, 116, 127, 0.12);
+  color: #ff747f;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.session-detail-cancel:disabled {
+  opacity: 0.55;
+}
+
+.session-detail-cancel svg {
+  width: 18px;
+  height: 18px;
+}
+
+.revoke-confirm {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.revoke-confirm button {
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.revoke-confirm button.is-danger {
+  color: #ff747f;
+  border: 1px solid rgba(255, 116, 127, 0.4);
+}
+
 .session-detail-heading {
   display: grid;
   min-width: 0;
@@ -945,6 +987,12 @@
   align-items: center;
   color: #7e899b;
   font-size: 10px;
+}
+
+.session-detail-status {
+  color: #9aa3b5;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .session-detail-subline-meta time {
