@@ -145,9 +145,12 @@ export class ProcessAgentAdapter implements AgentAdapter {
         cancelled = true;
         child.kill("SIGTERM");
         const timer = setTimeout(() => {
-          if (child.exitCode === null) child.kill("SIGKILL");
+          if (child.exitCode === null) {
+            child.kill("SIGKILL");
+          }
         }, 5_000);
-        timer.unref();
+        // Keep timer alive until process exits to ensure SIGKILL is sent
+        done.finally(() => clearTimeout(timer));
       },
     };
   }

@@ -27,7 +27,7 @@ export function createGatewayHttpServer(options: GatewayHttpOptions): Server {
   const { config, service, pairing, events, history, usage } = options;
   const pairingAttempts = new Map<string, { count: number; resetAt: number }>();
 
-  return createServer(async (request, response) => {
+  const server = createServer(async (request, response) => {
     const requestId = randomUUID();
     response.setHeader("X-Request-Id", requestId);
     response.setHeader("X-Content-Type-Options", "nosniff");
@@ -69,7 +69,7 @@ export function createGatewayHttpServer(options: GatewayHttpOptions): Server {
           return;
         }
         const body = await readJson(request, config.maxBodyBytes);
-        const code = readRequiredString(body, "code", 6);
+        const code = readRequiredString(body, "code", 8);
         const deviceName = readRequiredString(body, "deviceName", 80);
         if (!pairing.consume(code)) {
           sendError(response, 401, "The pairing code is invalid or expired");
@@ -320,6 +320,13 @@ export function createGatewayHttpServer(options: GatewayHttpOptions): Server {
       }
     }
   });
+
+  // Security: Set timeouts and connection limits
+  server.setTimeout(30_000); // 30 seconds total timeout
+  server.requestTimeout = 10_000; // 10 seconds to receive request body
+  server.maxConnections = 100; // Limit concurrent connections
+
+  return server;
 }
 
 class ClientError extends Error {
@@ -447,9 +454,17 @@ function openEventStream(
 }
 
 function writeEvent(response: ServerResponse, event: SessionEvent): void {
+  const MAX_EVENT_PAYLOAD_BYTES = 16_384; // 16KB per event
   response.write(`id: ${event.seq}\n`);
   response.write(`event: ${event.type}\n`);
-  response.write(`data: ${JSON.stringify(event)}\n\n`);
+  const serialized = JSON.stringify(event);
+  if (serialized.length > MAX_EVENT_PAYLOAD_BYTES) {
+    const truncated = { ...event, payload: { ...event.payload, _truncated: true } };
+    const truncatedJson = JSON.stringify(truncated).slice(0, MAX_EVENT_PAYLOAD_BYTES);
+    response.write(`data: ${truncatedJson}\n\n`);
+  } else {
+    response.write(`data: ${serialized}\n\n`);
+  }
 }
 
 function consumeRateLimit(

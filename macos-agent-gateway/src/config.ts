@@ -1,5 +1,6 @@
 import { homedir } from "node:os";
 import { delimiter, resolve } from "node:path";
+import { getDefaultHistoryDirs } from "./platform.js";
 
 export type GatewayConfig = {
   host: string;
@@ -43,22 +44,17 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig 
     allowedOrigins: [...new Set(origins)],
     pairingTtlMs: parseInteger(env.REMOTE_AGENT_PAIRING_TTL_MS, 5 * 60_000),
     maxBodyBytes: parseInteger(env.REMOTE_AGENT_MAX_BODY_BYTES, 1_048_576),
-    historyDirs: {
-      cursor: resolve(env.REMOTE_AGENT_CURSOR_HISTORY_DIR ?? `${homedir()}/.cursor/acp-sessions`),
-      cursorChats: resolve(
-        env.REMOTE_AGENT_CURSOR_CHATS_HISTORY_DIR ?? `${homedir()}/.cursor/chats`,
-      ),
-      cursorComposerDb: resolve(
-        env.REMOTE_AGENT_CURSOR_COMPOSER_DB ??
-          `${homedir()}/Library/Application Support/Cursor/User/globalStorage/state.vscdb`,
-      ),
-      cursorTranscripts: resolve(
-        env.REMOTE_AGENT_CURSOR_TRANSCRIPTS_DIR ?? `${homedir()}/.cursor/projects`,
-      ),
-      claude: resolve(env.REMOTE_AGENT_CLAUDE_HISTORY_DIR ?? `${homedir()}/.claude/projects`),
-      // Active Codex sessions only; archived_sessions are not scanned.
-      codex: resolve(env.REMOTE_AGENT_CODEX_HISTORY_DIR ?? `${homedir()}/.codex/sessions`),
-    },
+    historyDirs: (() => {
+      const defaults = getDefaultHistoryDirs();
+      return {
+        cursor: resolve(env.REMOTE_AGENT_CURSOR_HISTORY_DIR ?? defaults.cursor),
+        cursorChats: resolve(env.REMOTE_AGENT_CURSOR_CHATS_HISTORY_DIR ?? defaults.cursorChats),
+        cursorComposerDb: resolve(env.REMOTE_AGENT_CURSOR_COMPOSER_DB ?? defaults.cursorComposerDb),
+        cursorTranscripts: resolve(env.REMOTE_AGENT_CURSOR_TRANSCRIPTS_DIR ?? defaults.cursorTranscripts),
+        claude: resolve(env.REMOTE_AGENT_CLAUDE_HISTORY_DIR ?? defaults.claude),
+        codex: resolve(env.REMOTE_AGENT_CODEX_HISTORY_DIR ?? defaults.codex),
+      };
+    })(),
   };
 }
 

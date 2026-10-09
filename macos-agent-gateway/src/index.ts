@@ -29,23 +29,45 @@ const usage = new AgentUsageService({
 const server = createGatewayHttpServer({ config, service, pairing, events, history, usage });
 
 server.listen(config.port, config.host, () => {
+  const isPublic = config.host === "0.0.0.0" || config.host === "::";
+  const warningPrefix = isPublic ? "⚠️  " : "";
   process.stdout.write(
     `${JSON.stringify({
       event: "gateway.ready",
       url: `http://${config.host}:${config.port}`,
       roots: config.allowedRoots,
+      ...(isPublic ? { warning: "Public binding! Ensure network isolation and HTTPS proxy." } : {}),
     })}\n`,
   );
+  if (isPublic) {
+    process.stderr.write(
+      `${warningPrefix}WARNING: Gateway is listening on ${config.host}:${config.port}\n` +
+      `${warningPrefix}This exposes the pairing endpoint to the network.\n` +
+      `${warningPrefix}For production: Use HTTPS reverse proxy and restrict access by IP/network.\n` +
+      `${warningPrefix}See docs/security.md for deployment requirements.\n`,
+    );
+  }
 });
 
 const shutdown = (signal: string) => {
   process.stdout.write(`${JSON.stringify({ event: "gateway.stopping", signal })}\n`);
   service.stop();
   server.close(() => {
-    store.close();
+    try {
+      store.close(); // Calls WAL checkpoint before closing
+    } catch (error) {
+      process.stderr.write(`Store close error: ${error}\n`);
+    }
     process.exit(0);
   });
-  const timer = setTimeout(() => process.exit(1), 5_000);
+  const timer = setTimeout(() => {
+    try {
+      store.close(); // Attempt checkpoint even on timeout
+    } catch {
+      // Ignore errors during forced exit
+    }
+    process.exit(1);
+  }, 5_000);
   timer.unref();
 };
 

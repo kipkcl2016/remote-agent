@@ -378,7 +378,8 @@ function readJsonLinesWindow(path: string): Record<string, unknown>[] {
   const length = Math.min(stats.size, MAX_MESSAGE_WINDOW_BYTES);
   const fd = openSync(path, "r");
   try {
-    const buffer = Buffer.allocUnsafe(length);
+    // Use Buffer.alloc (zero-filled) instead of allocUnsafe for security
+    const buffer = Buffer.alloc(Math.min(length, stats.size));
     const bytes = readSync(fd, buffer, 0, buffer.length, start);
     let content = buffer.subarray(0, bytes).toString("utf8");
     if (start > 0) content = content.slice(Math.max(0, content.indexOf("\n") + 1));

@@ -103,7 +103,7 @@ function parseClaudeLike(event: JsonObject): AdapterEvent[] {
         payload: {
           id: stringValue(block.id),
           name: stringValue(block.name),
-          input: isObject(block.input) ? block.input : block.input,
+          input: isObject(block.input) ? block.input : { raw: block.input },
         },
       });
     }
