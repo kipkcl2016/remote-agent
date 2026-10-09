@@ -88,7 +88,7 @@ powershell -ExecutionPolicy Bypass -File uninstall-logon-task.ps1
 **Windows 特有说明**：
 
 - macOS 的 `service:install`（launchd）在 Windows 不可用；默认推荐本包内的任务计划脚本，[NSSM](https://nssm.cc/) 仅作备选（见运维文档）
-- 当前构建未经 Authenticode 签名，SmartScreen 可能对 zip/脚本提示警告
+- 当前构建未经 Authenticode 签名，SmartScreen 可能对 zip/脚本提示警告；**正式签名发布**需在 GitHub 配置 Phase C secrets（见 [Windows 自启动与签名规划 — Phase C](docs/ops/windows-service-and-signing.md#phase-c--付费签名与正式分发)），并引入签名的 exe/MSI 或 macOS `.pkg`
 - Windows 默认历史路径：
   - Cursor: `%APPDATA%\Cursor`
   - Claude: `%USERPROFILE%\.claude`

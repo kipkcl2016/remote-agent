@@ -128,6 +128,10 @@ pair.bat
 - 审计并修复依赖漏洞
 - 添加跨平台路径支持
 
+## 代码签名（Phase C）
+
+CI 已支持**可选** Windows Authenticode 与 macOS 公证步骤：未配置 GitHub Actions secrets 时制品仍为 **未签名**（与 v0.1.0 一致）。维护者采购证书并写入 secrets 后，发布流水线将自动签名（详见 [Phase C Runbook](docs/ops/windows-service-and-signing.md#phase-c-运维手册runbook)）。所需 secret 名称以该文档「GitHub Actions Secrets 清单」为准。
+
 ## 构建信息
 
 - 构建分支: `release/v0.1.0`
