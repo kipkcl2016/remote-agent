@@ -7,6 +7,11 @@ on:
       - 'main'
   pull_request:
   workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Optional git ref to build (commit SHA, tag, or branch). Defaults to the triggering ref.'
+        required: false
+        type: string
 
 jobs:
   build-gateway:
@@ -172,4 +177,66 @@ jobs:
         with:
           name: mobile-agent-remote-client
           path: mobile-agent-remote-client.tar.gz
+          retention-days: 30
+
+  build-android-debug-apk:
+    name: Build Android Debug APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ref != '' && github.event.inputs.ref || github.sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: 'npm'
+          cache-dependency-path: mobile-agent-remote/package-lock.json
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Install Android SDK packages
+        run: |
+          ANDROID_SDK_ROOT="/usr/local/lib/android/sdk"
+          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          SDKMANAGER="$(find "$ANDROID_SDK_ROOT/cmdline-tools" -name sdkmanager -type f 2>/dev/null | head -1)"
+          if [ -z "$SDKMANAGER" ]; then
+            echo "sdkmanager not found under $ANDROID_SDK_ROOT/cmdline-tools"
+            ls -la "$ANDROID_SDK_ROOT" || true
+            exit 1
+          fi
+          echo "Using sdkmanager: $SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null
+          "$SDKMANAGER" --install "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Install dependencies
+        working-directory: mobile-agent-remote
+        run: npm ci
+
+      - name: Sync Capacitor (web build + native)
+        working-directory: mobile-agent-remote
+        run: npm run native:sync
+
+      - name: Assemble debug APK
+        working-directory: mobile-agent-remote/android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Stage APK artifact
+        run: |
+          cp mobile-agent-remote/android/app/build/outputs/apk/debug/app-debug.apk remote-agent-android-debug.apk
+          ls -lh remote-agent-android-debug.apk
+
+      - name: Upload Android debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: remote-agent-android-debug
+          path: remote-agent-android-debug.apk
           retention-days: 30
