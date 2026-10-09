@@ -63,8 +63,8 @@ macOS 网关负责认证、目录白名单、统一会话模型、Agent 进程�
 
 ## 后续演进
 
-1. 用 Codex app-server、Claude SDK/长期会话协议和 Cursor 稳定接口替代短进程 CLI 续接。
-2. 增加结构化 approval challenge/resolve 协议与移动端审批卡片。
+1. 用 **Agent Client Protocol（ACP）** 在网关内实现长期 Agent Client，逐步替代短进程 CLI adapter；Phase 0 调研结论见 [`architecture/acp-phase0.md`](architecture/acp-phase0.md)（协议 v1、`@agentclientprotocol/sdk`、事件映射与安全边界；Phase 1 建议 PoC：**Claude + `claude-agent-acp`**）。
+2. 增加结构化 approval challenge/resolve 协议与移动端审批卡片（ACP 侧对应 `session/request_permission` 与 Phase 2 手机 resolve，见上调研文档 §1.4）。
 3. 接入 APNs/FCM 推送通知与原生深链。
 4. 增加 Tailscale Serve 或受管中继部署方案，网关仍默认只监听回环地址。
 
