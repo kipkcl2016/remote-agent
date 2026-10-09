@@ -210,7 +210,13 @@ Remote Agent 让已授权的移动设备在不持有 Agent API 密钥、不接�
 
 以下均不是已交付功能：
 
-1. 用长期 Agent 协议替代短进程 CLI，并实现结构化 approval challenge/resolve。
+### 7.1 ACP 长期 Agent 协议（Issue #1）
+
+1. 用长期 Agent 协议替代短进程 CLI，并实现结构化 approval challenge/resolve。  
+   - **Phase 0（已完成）**：调研文档 [`architecture/acp-phase0.md`](../architecture/acp-phase0.md)——各 Agent ACP 启用方式、TS SDK 可行性、事件映射、`REMOTE_AGENT_ROOTS` 安全边界、Phase 1 单 Agent PoC 建议（**Claude + `@agentclientprotocol/claude-agent-acp`**，失败回退现有 `claude` 短进程 adapter）。  
+   - **Phase 1（未开始）**：网关内最小 ACP Client，单 Agent PoC，事件写入现有 SQLite/SSE。  
+   - **Phase 2（未开始）**：多 Agent、手机 approval resolve、旧 CLI 降级为回退路径。
+
 2. 接入 APNs/FCM、深链、后台恢复和锁屏隐私（含 `SETTING-002` 的真实通知行为）。
 3. 完成生产 TLS、审计脱敏、依赖扫描、正式签名和密钥轮换。
 4. 会话合并改用原始 `updatedAt` 精确排序。
