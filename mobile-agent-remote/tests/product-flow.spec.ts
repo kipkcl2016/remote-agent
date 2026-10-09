@@ -619,6 +619,48 @@ test("[SESSION-007] same-name benchmark workspaces keep separate projects with u
   await expect(page.getByTestId("session-benchmark-current-task-2")).toBeVisible();
 });
 
+test("[SESSION-007] duplicate Codex project folders keep the real name in the project header", async ({ page }) => {
+  await page.addInitScript(({ url }) => {
+    localStorage.setItem("remote-agent.gateway.url", url);
+    localStorage.setItem("remote-agent.gateway.token", "test-token");
+  }, { url: gatewayUrl });
+
+  const nativeSessions: MockNativeSession[] = [
+    {
+      id: "codex-shared-a",
+      agent: "codex",
+      title: "Codex task A",
+      cwd: "/Users/test/ws-a/workspace/remote-agent",
+      projectId: "codex-shared-a-project",
+      projectName: "remote-agent",
+      updatedAt: now,
+      resumable: true,
+      source: "native",
+    },
+    {
+      id: "codex-shared-b",
+      agent: "codex",
+      title: "Codex task B",
+      cwd: "/Users/test/ws-b/workspace/remote-agent",
+      projectId: "codex-shared-b-project",
+      projectName: "remote-agent",
+      updatedAt: now,
+      resumable: true,
+      source: "native",
+    },
+  ];
+  await page.route(`${gatewayUrl}/**`, (route) => (
+    handleGatewayRoute(route, [], new Map(), "TestMac.local", [], nativeSessions)
+  ));
+
+  await page.goto("/");
+  await page.getByTestId("view-projects").click();
+  const projectHeaders = page.locator(".project-summary strong");
+  await expect(projectHeaders).toHaveCount(2);
+  await expect(projectHeaders).toHaveText(["remote-agent", "remote-agent"]);
+  await expect(page.locator(".project-summary small").first()).not.toContainText(/^workspace · remote-agent/);
+});
+
 test("[SESSION-008] matching cache renders first, then live data replaces it without caching secrets", async ({ page }) => {
   const freshSession: MockSession = {
     id: "fresh-session",

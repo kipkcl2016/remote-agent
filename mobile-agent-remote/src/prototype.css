@@ -683,13 +683,20 @@
   white-space: nowrap;
 }
 
-.session-copy > span {
+.session-copy > span,
+.session-project {
   overflow: hidden;
   color: var(--muted);
   font-size: 12px;
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.session-project-hint {
+  margin-inline-start: 6px;
+  color: #657084;
+  font-size: 11px;
 }
 
 .session-meta {
