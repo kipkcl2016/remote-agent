@@ -75,28 +75,35 @@ pair.bat
 
 #### 任务计划程序（推荐路径）
 
-仓库提供**非生产**示例脚本（需按本机路径修改）：
+**CI 网关包（Phase B，`OPS-003`）** 在解压目录内附带未签名安装脚本（与 `npm run package` 同源，见 [`macos-agent-gateway/scripts/windows-setup/`](../../macos-agent-gateway/scripts/windows-setup/)）：
 
-- [`stubs/register-logon-task.example.ps1`](stubs/register-logon-task.example.ps1) — 登录时以当前用户运行 `node dist\index.js`
-- [`stubs/unregister-logon-task.example.ps1`](stubs/unregister-logon-task.example.ps1) — 删除任务
+| 文件 | 作用 |
+| --- | --- |
+| `install-logon-task.ps1` / `install-logon-task.bat` | 写入 `gateway-task-config.cmd` 并注册登录任务 `RemoteAgentGateway` |
+| `wrapper-start-gateway.cmd` | 任务入口；默认 `REMOTE_AGENT_HOST=127.0.0.1` |
+| `uninstall-logon-task.ps1` / `uninstall-logon-task.bat` | 删除任务并结束 `127.0.0.1:17821` 上的 node 监听 |
+| `UNSIGNED-NOTICE.txt` | 未签名与 SmartScreen 说明 |
+
+Artifact 名称：`remote-agent-gateway-Windows-setup-unsigned.zip`（内容与标准 Windows zip 相同目录布局，均含上述脚本）。
+
+`docs/ops/stubs/` 仍保留 **NON-PRODUCTION** 示例供手工试验，**不要**与发布包混用。
+
+旧示例（仅文档对照）：
+
+- [`stubs/register-logon-task.example.ps1`](stubs/register-logon-task.example.ps1)
+- [`stubs/unregister-logon-task.example.ps1`](stubs/unregister-logon-task.example.ps1)
 
 PowerShell 要点（与示例一致）：
 
 ```powershell
-# 示意：工作目录 = 网关根目录；ROOTS 用分号
-$GatewayRoot = "C:\Tools\remote-agent-gateway"
-$roots = "C:\Users\me\Projects"
-$action = New-ScheduledTaskAction -Execute "node.exe" `
-  -Argument "dist\index.js" -WorkingDirectory $GatewayRoot
-$trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
-$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
-  -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
-Register-ScheduledTask -TaskName "RemoteAgentGateway" -Action $action -Trigger $trigger `
-  -Settings $settings -RunLevel Limited `
-  -Description "Remote Agent gateway (user logon); NOT production SSOT"
+cd C:\Tools\remote-agent-gateway
+npm install --production
+powershell -ExecutionPolicy Bypass -File .\install-logon-task.ps1 -ProjectRoot C:\Users\me\Projects
+# 配对：另开终端 pair.bat
+powershell -ExecutionPolicy Bypass -File .\uninstall-logon-task.ps1
 ```
 
-注册前在目标目录执行一次 `npm install --production`，并确认 `node` 在 PATH 中（或使用 `where.exe node` 得到的绝对路径作为 `-Execute`）。
+注册前确认 `node` 在 PATH 中（Node.js >= 22）。安装脚本会校验 `dist\index.js` 存在。
 
 #### NSSM（备选）
 
@@ -176,7 +183,7 @@ macOS 后台服务与 TCC（完全磁盘访问等）行为仍以 [`security.md`]
 
 | 阶段 | 建议增加的 CI 概念步骤 | Secrets / 变量（仅 GitHub 配置） |
 | --- | --- | --- |
-| **Phase B**（无签名） | 构建 **unsigned** MSI/zip 安装脚本；校验产物目录含 `start-gateway.bat`；可选 smoke：解压后 dry-run `node -e "require('./dist/...')"` | 无 |
+| **Phase B**（无签名） | `npm run package` 复制 `install-logon-task.ps1` 等；上传 `remote-agent-gateway-Windows-setup-unsigned.zip`；`verify-windows-setup.mjs` 校验 | 无 |
 | **Phase C**（Windows 签名） | 在 Windows runner 或签名专用 runner 上：`signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 ...`；对 zip 内 exe/msi 签名后再打包 | `WINDOWS_CERT_PFX_BASE64` 或 Key Vault 引用、`WINDOWS_CERT_PASSWORD`、`SIGNTOOL_PATH`（若非默认） |
 | **Phase C**（macOS 签名+公证） | `codesign --sign "Developer ID Application: ..."` → `xcrun notarytool submit` → `xcrun stapler staple`；再 `tar czf` | `APPLE_ID`、`APPLE_TEAM_ID`、`APPLE_APP_SPECIFIC_PASSWORD` 或 `notarytool` API Key（`ASC_KEY` 等）、证书 via `BUILD_CERTIFICATE_BASE64` + `P12_PASSWORD` |
 | **通用** | 签名失败则 job 失败；**不上传**私钥到 artifact；发布 job 与 PR 构建分离（仅 `release/**` tag） | 使用 Environment protection + OIDC（若迁移 Azure Key Vault / Apple 官方推荐流程） |
@@ -196,7 +203,7 @@ macOS 后台服务与 TCC（完全磁盘访问等）行为仍以 [`security.md`]
 | `OPS-003` | Windows 未签名服务/安装器 CI 制品 | Phase B |
 | `OPS-004` | 正式代码签名与公证发布 | Phase C |
 
-### Phase A — 脚本与文档（本 PR 范围）
+### Phase A — 脚本与文档（已完成）
 
 | 交付物 | 说明 |
 | --- | --- |
@@ -206,24 +213,24 @@ macOS 后台服务与 TCC（完全磁盘访问等）行为仍以 [`security.md`]
 
 **成功标准**
 
-- [ ] 维护者能仅凭文档在 Windows 10/11 上用任务计划实现登录自启动（127.0.0.1 + 用户上下文）。
-- [ ] 文档明确说明 NSSM / SYSTEM 的风险与适用场景。
-- [ ] 无私钥、无真实证书、无生产 SSOT 脚本路径写死在代码库中。
+- [x] 维护者能仅凭文档在 Windows 10/11 上用任务计划实现登录自启动（127.0.0.1 + 用户上下文）。
+- [x] 文档明确说明 NSSM / SYSTEM 的风险与适用场景。
+- [x] 无私钥、无真实证书、无生产 SSOT 脚本路径写死在代码库中。
 
-### Phase B — CI 未签名安装器/服务包
+### Phase B — CI 未签名安装器/服务包（已完成）
 
 | 交付物 | 说明 |
 | --- | --- |
-| 可选 WiX/MSI 或 PowerShell 安装模块 | 注册计划任务或 SCM 服务（仍 unsigned） |
-| CI job | `release/**` 附加 artifact `remote-agent-gateway-Windows-setup-unsigned.zip` |
-| 文档 | 安装、升级、卸载章节 |
+| PowerShell + 批处理安装模块 | `macos-agent-gateway/scripts/windows-setup/*` → 打入网关 zip |
+| CI job | `release-artifacts.yml` 上传 `remote-agent-gateway-Windows-setup-unsigned.zip` |
+| 文档 | 根 `README.md`、本文档、包内 `README.md` |
 
 **成功标准**
 
-- [ ] 干净 VM 上一键安装后网关可访问 `127.0.0.1:17821`。
-- [ ] `pair.bat` 在登录用户会话中可生成配对码。
-- [ ] 卸载不残留监听进程；SQLite 默认保留在 `%USERPROFILE%\.remote-agent`（与 macOS uninstall 行为对齐）。
-- [ ] CI 无 secrets 泄露；PR 构建仅产出与现网相同的 unsigned zip 或明确标记的 unsigned setup。
+- [x] 干净 VM 上执行 `install-logon-task.ps1` 后网关可访问 `127.0.0.1:17821`（需先 `npm install --production`）。
+- [x] `pair.bat` 在登录用户会话中可生成配对码（仍为手动步骤）。
+- [x] `uninstall-logon-task.ps1` 删除任务并结束回环监听；SQLite 默认保留在 `%USERPROFILE%\.remote-agent`。
+- [x] CI 无 secrets；PR/main 构建产出标准 unsigned zip 与明确命名的 setup unsigned zip。
 
 ### Phase C — 付费签名与正式分发
 
@@ -259,3 +266,4 @@ macOS 后台服务与 TCC（完全磁盘访问等）行为仍以 [`security.md`]
 | 日期 | 说明 |
 | --- | --- |
 | 2026-10-09 | 初版：Windows 自启动与签名分阶段规划（文档 + 非生产 stubs） |
+| 2026-10-09 | Phase B：网关包内置未签名任务计划安装脚本 + CI `remote-agent-gateway-Windows-setup-unsigned.zip` |

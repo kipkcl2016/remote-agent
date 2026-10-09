@@ -68,16 +68,27 @@ npm run dev -- --port 4173
 
 Windows 平台可从 CI Artifacts 下载预打包的网关压缩包：
 
-1. **下载与解压**：从 GitHub Actions 运行记录中下载 `remote-agent-gateway-Windows.zip`，解压到任意目录
+1. **下载与解压**：从 GitHub Actions 运行记录中下载 `remote-agent-gateway-Windows.zip`（或含登录自启动脚本的 `remote-agent-gateway-Windows-setup-unsigned.zip`），解压到任意目录
 2. **安装依赖**：在解压目录运行 `npm install --production`
-3. **启动网关**：使用 `start-gateway.bat C:\path\to\your\projects` 启动网关
+3. **启动网关**：使用 `start-gateway.bat C:\path\to\your\projects` 启动网关（前台）
 4. **生成配对码**：在另一个终端运行 `pair.bat`
+
+**登录自启动（未签名，OPS-003）**：
+
+```cmd
+cd C:\path\to\remote-agent-gateway
+npm install --production
+powershell -ExecutionPolicy Bypass -File install-logon-task.ps1 -ProjectRoot C:\Users\me\Projects
+REM 配对仍需手动：pair.bat
+powershell -ExecutionPolicy Bypass -File uninstall-logon-task.ps1
+```
+
+默认以当前 Windows 用户在登录时运行计划任务，监听 `127.0.0.1:17821`。卸载会删除任务并结束回环上的网关进程；`%USERPROFILE%\.remote-agent` 数据默认保留。详见 [docs/ops/windows-service-and-signing.md](docs/ops/windows-service-and-signing.md)。
 
 **Windows 特有说明**：
 
-- launchd 是 macOS 专用功能，Windows 无法使用 `service:install` 命令
-- 如需开机自启动，可使用 Windows 任务计划程序或 [NSSM](https://nssm.cc/) 将网关封装为系统服务
-- 当前构建未经代码签名，首次运行可能触发 Windows Defender SmartScreen 警告，选择"仍要运行"即可
+- macOS 的 `service:install`（launchd）在 Windows 不可用；默认推荐本包内的任务计划脚本，[NSSM](https://nssm.cc/) 仅作备选（见运维文档）
+- 当前构建未经 Authenticode 签名，SmartScreen 可能对 zip/脚本提示警告
 - Windows 默认历史路径：
   - Cursor: `%APPDATA%\Cursor`
   - Claude: `%USERPROFILE%\.claude`

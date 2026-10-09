@@ -47,6 +47,11 @@ jobs:
       - name: Create package
         working-directory: macos-agent-gateway
         run: npm run package
+
+      - name: Verify Windows setup scripts in gateway package
+        if: runner.os == 'Windows'
+        working-directory: macos-agent-gateway
+        run: node scripts/verify-windows-setup.mjs
       
       - name: Create archive (Unix)
         if: runner.os != 'Windows'
@@ -60,7 +65,8 @@ jobs:
         working-directory: macos-agent-gateway/packages
         shell: pwsh
         run: |
-          Compress-Archive -Path remote-agent-gateway -DestinationPath remote-agent-gateway-Windows.zip
+          Compress-Archive -Path remote-agent-gateway -DestinationPath remote-agent-gateway-Windows.zip -Force
+          Compress-Archive -Path remote-agent-gateway -DestinationPath remote-agent-gateway-Windows-setup-unsigned.zip -Force
           Get-ChildItem *.zip
       
       - name: Upload artifact (Unix)
@@ -77,6 +83,14 @@ jobs:
         with:
           name: remote-agent-gateway-Windows
           path: macos-agent-gateway/packages/remote-agent-gateway-Windows.zip
+          retention-days: 30
+
+      - name: Upload artifact (Windows setup unsigned)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: remote-agent-gateway-Windows-setup-unsigned
+          path: macos-agent-gateway/packages/remote-agent-gateway-Windows-setup-unsigned.zip
           retention-days: 30
   
   build-mobile-client:
