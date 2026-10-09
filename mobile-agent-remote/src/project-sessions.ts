@@ -9,6 +9,60 @@ export type ProjectDisplay = {
   projectHint?: string;
 };
 
+export type ProjectSessionGroup<T extends ProjectSessionIdentity & ProjectDisplay> = {
+  id: string;
+  name: string;
+  hint?: string;
+  defaultCwd: string;
+  sessions: T[];
+};
+
+export function projectDisplayGroupKey(projectName: string): string {
+  return projectName.trim().toLocaleLowerCase();
+}
+
+export function projectGroupId(projectName: string): string {
+  return `group:${projectDisplayGroupKey(projectName)}`;
+}
+
+export function groupSessionsByProjectDisplay<T extends ProjectSessionIdentity & ProjectDisplay>(
+  sessions: T[],
+): ProjectSessionGroup<T>[] {
+  const grouped = new Map<string, ProjectSessionGroup<T>>();
+  for (const session of sessions) {
+    const key = projectDisplayGroupKey(session.project);
+    const existing = grouped.get(key);
+    if (existing) {
+      existing.sessions.push(session);
+      continue;
+    }
+    grouped.set(key, {
+      id: projectGroupId(session.project),
+      name: session.project,
+      sessions: [session],
+      defaultCwd: session.cwd.trim(),
+    });
+  }
+
+  for (const group of grouped.values()) {
+    const cwds = [...new Set(
+      group.sessions.map((session) => session.cwd.trim()).filter(Boolean),
+    )];
+    group.defaultCwd = group.sessions.find((session) => session.cwd.trim())?.cwd.trim() ?? group.defaultCwd;
+    if (cwds.length === 1) {
+      group.defaultCwd = cwds[0] ?? group.defaultCwd;
+      const hints = [...new Set(
+        group.sessions.map((session) => session.projectHint?.trim()).filter(Boolean),
+      )];
+      group.hint = hints.length === 1 ? hints[0] : undefined;
+    } else {
+      group.hint = undefined;
+    }
+  }
+
+  return [...grouped.values()];
+}
+
 export function disambiguateProjectNames<T extends ProjectSessionIdentity>(
   sessions: T[],
 ): Array<T & ProjectDisplay> {
