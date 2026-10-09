@@ -77,7 +77,7 @@ pair.bat
 
 1. **服务安装不可用**
    - launchd 是 macOS 专用功能
-   - Windows 用户需手动启动网关或使用 NSSM 包装为系统服务
+   - Windows 用户需手动启动网关或使用任务计划/NSSM 自启动；推荐默认与风险说明见 [Windows 自启动与签名规划](docs/ops/windows-service-and-signing.md)
 
 2. **默认历史路径**
    - Cursor: `%APPDATA%\Cursor`
@@ -145,3 +145,4 @@ https://github.com/kipkcl2016/remote-agent/issues
 - [功能说明](docs/product/feature-guide.md)
 - [架构文档](docs/architecture.md)
 - [安全说明](docs/security.md)
+- [Windows 自启动与代码签名规划](docs/ops/windows-service-and-signing.md)
