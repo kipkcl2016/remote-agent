@@ -15,6 +15,7 @@
 
 ### 已包含在 main 上的功能与修复（v0.1.2 之后）
 
+- **修复移动端查看 Cursor 原生历史时正文为空**（PR #15）：网关正确读取 Cursor 3.0+ `composer.composerHeaders`（ItemTable）索引，并按 `agent-transcripts` 加载用户/助手文本；白名单外仍为只读但可阅读正文
 - 项目名称展示与项目会话相关改进（含 PR #13）
 - Android Debug APK CI 构建（`remote-agent-android-debug.apk`）
 - 发布流水线支持 `workflow_dispatch` 指定 ref 构建
