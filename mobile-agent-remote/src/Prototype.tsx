@@ -16,6 +16,7 @@ import {
 } from "react";
 import { App as CapacitorApp } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
+import { disambiguateProjectNames } from "./project-sessions.js";
 import {
   TbArrowLeft,
   TbBrandOpenai,
@@ -84,6 +85,7 @@ type AgentSession = {
   agent: AgentName;
   title: string;
   project: string;
+  projectHint?: string;
   branch: string;
   status: SessionStatus;
   updatedAt: string;
@@ -95,6 +97,7 @@ type AgentSession = {
 type ProjectGroup = {
   id: string;
   name: string;
+  hint?: string;
   sessions: AgentSession[];
 };
 
@@ -561,7 +564,7 @@ export default function Prototype() {
       const agentMatches = filter === "全部" || session.agent === filter;
       const textMatches =
         !normalized ||
-        `${session.title} ${session.project} ${session.branch} ${session.agent}`
+        `${session.title} ${session.project} ${session.projectHint ?? ""} ${session.branch} ${session.agent}`
           .toLocaleLowerCase()
           .includes(normalized);
       return agentMatches && textMatches;
@@ -585,6 +588,7 @@ export default function Prototype() {
       grouped.set(session.projectId, {
         id: session.projectId,
         name: session.project,
+        hint: session.projectHint,
         sessions: [session],
       });
     }
@@ -592,13 +596,14 @@ export default function Prototype() {
   }, [visibleSessions]);
 
   const knownProjects = useMemo(() => {
-    const byId = new Map<string, { id: string; name: string; cwd: string }>();
+    const byId = new Map<string, { id: string; name: string; hint?: string; cwd: string }>();
     for (const session of sessions) {
       const cwd = session.cwd.trim();
       if (!cwd || byId.has(session.projectId)) continue;
       byId.set(session.projectId, {
         id: session.projectId,
         name: session.project,
+        hint: session.projectHint,
         cwd,
       });
     }
@@ -1937,7 +1942,7 @@ export default function Prototype() {
                     <option value="">选择已有项目…</option>
                     {knownProjects.map((project) => (
                       <option key={project.id} value={project.id}>
-                        {project.name}
+                        {project.hint ? `${project.name} · ${project.hint}` : project.name}
                       </option>
                     ))}
                     <option value="__custom__">手动输入路径…</option>
@@ -2642,7 +2647,10 @@ const ProjectGroupCard = memo(function ProjectGroupCard({
           <span className="project-folder"><TbFolder aria-hidden="true" /></span>
           <span className="project-summary">
             <strong>{group.name}</strong>
-            <small>最近更新 {group.sessions[0]?.time}</small>
+            <small>
+              {group.hint ? `${group.hint} · ` : ""}
+              最近更新 {group.sessions[0]?.time}
+            </small>
           </span>
           <TbChevronRight className="project-chevron" aria-hidden="true" />
         </button>
@@ -2691,7 +2699,12 @@ const SessionRow = memo(function SessionRow({
       <AgentIcon agent={session.agent} framed />
       <span className="session-copy">
         <strong>{session.title}</strong>
-        <span>{session.project}</span>
+        <span className="session-project">
+          <span>{session.project}</span>
+          {session.projectHint ? (
+            <span className="session-project-hint">{session.projectHint}</span>
+          ) : null}
+        </span>
       </span>
       <span className="session-meta">
         <SessionStateIndicator session={session} placement="list" />
@@ -3287,6 +3300,7 @@ function sameAgentSession(left: AgentSession, right: AgentSession): boolean {
     && left.agent === right.agent
     && left.title === right.title
     && left.project === right.project
+    && left.projectHint === right.projectHint
     && left.branch === right.branch
     && left.status === right.status
     && left.updatedAt === right.updatedAt
@@ -3574,86 +3588,6 @@ function localProjectId(cwd: string): string {
     hash = Math.imul(hash, 16_777_619);
   }
   return `local-${(hash >>> 0).toString(16).padStart(8, "0")}`;
-}
-
-function disambiguateProjectNames(sessions: AgentSession[]): AgentSession[] {
-  const projectsByName = new Map<string, Map<string, { name: string; cwd: string }>>();
-  for (const session of sessions) {
-    const normalizedName = session.project.trim().toLocaleLowerCase();
-    const projects = projectsByName.get(normalizedName) ?? new Map();
-    const existing = projects.get(session.projectId);
-    if (!existing || (!existing.cwd && session.cwd)) {
-      projects.set(session.projectId, { name: session.project, cwd: session.cwd });
-    }
-    projectsByName.set(normalizedName, projects);
-  }
-
-  const labels = new Map<string, string>();
-  for (const projects of projectsByName.values()) {
-    const records = [...projects.entries()].map(([id, project]) => ({ id, ...project }));
-    if (records.length < 2) continue;
-    const contexts = records.map((record) => projectPathContext(record.cwd, record.name));
-    const minimumDepth = Math.max(1, ...records.map((record) => projectPathMinimumDepth(
-      record.cwd,
-      record.name,
-    )));
-    const maximumDepth = Math.max(1, ...contexts.map((context) => context.length));
-    let candidates: string[] = [];
-    for (let depth = minimumDepth; depth <= Math.max(minimumDepth, maximumDepth); depth += 1) {
-      candidates = records.map((record, index) => projectPathLabel(
-        record.name,
-        contexts[index] ?? [],
-        depth,
-      ));
-      if (new Set(candidates.map((candidate) => candidate.toLocaleLowerCase())).size === records.length) break;
-    }
-    if (new Set(candidates.map((candidate) => candidate.toLocaleLowerCase())).size !== records.length) {
-      candidates = records.map((record, index) => (
-        `${candidates[index] || record.name} · ${record.id.slice(0, 6)}`
-      ));
-    }
-    records.forEach((record, index) => labels.set(record.id, candidates[index] ?? record.name));
-  }
-
-  if (!labels.size) return sessions;
-  return sessions.map((session) => {
-    const label = labels.get(session.projectId);
-    return label && label !== session.project ? { ...session, project: label } : session;
-  });
-}
-
-function projectPathMinimumDepth(cwd: string, projectName: string): number {
-  if (projectName.trim().toLocaleLowerCase() !== "workspace") return 1;
-  const normalized = cwd.replace(/\\/g, "/").replace(/\/+$/, "");
-  return /\/[^/]+-benchmark\/runs\/[^/]+\/[^/]+\/workspace$/i.test(normalized) ? 3 : 1;
-}
-
-function projectPathContext(cwd: string, projectName: string): string[] {
-  const parts = cwd.replace(/\\/g, "/").split("/").filter(Boolean);
-  const normalizedName = projectName.trim().toLocaleLowerCase();
-  let projectIndex = -1;
-  for (let index = parts.length - 1; index >= 0; index -= 1) {
-    if (parts[index]?.toLocaleLowerCase() === normalizedName) {
-      projectIndex = index;
-      break;
-    }
-  }
-  if (projectIndex < 0) projectIndex = Math.max(0, parts.length - 1);
-  return parts.slice(0, projectIndex).reverse().flatMap((part) => {
-    const normalized = part.toLocaleLowerCase();
-    if (normalized === "runs" || normalized === "tasks") return [];
-    const cleaned = part
-      .replace(/^\d{4}-\d{2}-\d{2}-/, "")
-      .replace(/-benchmark$/i, "");
-    return cleaned ? [cleaned] : [];
-  });
-}
-
-function projectPathLabel(projectName: string, context: string[], depth: number): string {
-  const isWorkspace = projectName.trim().toLocaleLowerCase() === "workspace";
-  const parents = isWorkspace ? context.slice(0, depth) : context.slice(0, depth).reverse();
-  if (!isWorkspace) parents.push(projectName);
-  return parents.join(" · ") || projectName;
 }
 
 function limitSessionsPerProject(sessions: AgentSession[], limit: number): AgentSession[] {
