@@ -11,6 +11,7 @@
 | 改 HTTP、SSE、状态或 Agent adapter | [`reference/protocol-contract.md`](reference/protocol-contract.md) | 枚举、权限映射、API、事件、输入限制；**跨端契约 SSOT** |
 | 改模块关系、数据流或持久化 | [`architecture.md`](architecture.md) | 系统边界、组件职责和数据流；**架构 SSOT** |
 | 改认证、网络、凭据、目录或进程权限 | [`security.md`](security.md) | 威胁边界、部署要求和上线门槛；**安全 SSOT** |
+| Windows 网关自启动 / 发布签名规划 | [`ops/windows-service-and-signing.md`](ops/windows-service-and-signing.md) | 任务计划 vs NSSM、最小权限、Authenticode/公证与 CI 分阶段清单 |
 | 开始任何代码改动或准备交付 | [`quality/change-and-acceptance.md`](quality/change-and-acceptance.md) | 前置检查、影响分析、质量门禁和 DoD；**变更流程 SSOT** |
 | 确定某功能应检查什么 | [`quality/feature-matrix.md`](quality/feature-matrix.md) | 功能 ID → 代码 → 测试 → 人工验收的追踪矩阵；**验收覆盖 SSOT** |
 | 留存一次变更的验收记录 | [`quality/acceptance-record-template.md`](quality/acceptance-record-template.md) | 可复制的验收记录模板 |
