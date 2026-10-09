@@ -10,7 +10,7 @@ import {
 } from "node:fs";
 import { basename, dirname, extname, join } from "node:path";
 import type { CodexThreadProvider } from "./codex-threads.js";
-import { scanCursorComposerHeaders } from "./cursor-composers.js";
+import { cursorProjectSlugFromCwd, scanCursorComposerHeaders } from "./cursor-composers.js";
 import { resolveAllowedWorkingDirectory } from "./security.js";
 import { ProjectResolver } from "./project-resolver.js";
 import type { GatewayConfig } from "./config.js";
@@ -75,7 +75,7 @@ export class NativeHistoryService {
   ): Promise<NativeHistoryMessage[] | undefined> {
     const session = await this.get(agent, id);
     if (!session) return undefined;
-    const path = resolveNativeMessagePath(agent, id, this.dirs);
+    const path = resolveNativeMessagePath(agent, id, this.dirs, session.cwd);
     if (!path) return [];
     const messages = readNativeMessages(agent, path);
     return messages.slice(-Math.max(1, Math.min(limit, 500)));
@@ -88,7 +88,7 @@ export class NativeHistoryService {
   ): Promise<{ session: NativeHistorySession; messages: NativeHistoryMessage[] } | undefined> {
     const session = await this.get(agent, id);
     if (!session) return undefined;
-    const path = resolveNativeMessagePath(agent, id, this.dirs);
+    const path = resolveNativeMessagePath(agent, id, this.dirs, session.cwd);
     if (!path) return { session, messages: [] };
     const messages = readNativeMessages(agent, path);
     return {
@@ -403,8 +403,9 @@ function resolveNativeMessagePath(
   agent: AgentKind,
   id: string,
   dirs: GatewayConfig["historyDirs"],
+  cwd?: string,
 ): string | undefined {
-  if (agent === "cursor") return findCursorTranscriptPath(dirs.cursorTranscripts, id);
+  if (agent === "cursor") return findCursorTranscriptPath(dirs.cursorTranscripts, id, cwd);
   if (agent === "claude") return findClaudePath(dirs.claude, id);
   return findCodexPath([dirs.codex], id);
 }
@@ -419,17 +420,43 @@ function findClaudePath(root: string, id: string): string | undefined {
   return walkFiles(root, ".jsonl").find((path) => basename(path, ".jsonl") === id);
 }
 
-function findCursorTranscriptPath(root: string, id: string): string | undefined {
+function findCursorTranscriptPath(
+  root: string,
+  id: string,
+  cwd?: string,
+): string | undefined {
   if (!isSafeSessionId(id) || !root || !existsSync(root)) return undefined;
-  const direct = join(root, "agent-transcripts", id, `${id}.jsonl`);
-  if (existsSync(direct)) return direct;
+  const candidates: string[] = [];
+  const pushCandidate = (path: string) => {
+    if (!candidates.includes(path)) candidates.push(path);
+  };
+
+  pushCandidate(join(root, "agent-transcripts", id, `${id}.jsonl`));
+  pushCandidate(join(root, "agent-transcripts", `${id}.jsonl`));
+  pushCandidate(join(root, "agent-transcripts", `${id}.txt`));
+
+  const slug = cwd ? cursorProjectSlugFromCwd(cwd) : undefined;
+  if (slug) {
+    pushCandidate(join(root, slug, "agent-transcripts", id, `${id}.jsonl`));
+    pushCandidate(join(root, slug, "agent-transcripts", `${id}.jsonl`));
+    pushCandidate(join(root, slug, "agent-transcripts", `${id}.txt`));
+  }
+
   for (const project of safeDirectories(root)) {
-    const preferred = join(root, project.name, "agent-transcripts", id, `${id}.jsonl`);
-    if (existsSync(preferred)) return preferred;
+    pushCandidate(join(root, project.name, "agent-transcripts", id, `${id}.jsonl`));
+    pushCandidate(join(root, project.name, "agent-transcripts", `${id}.jsonl`));
+    pushCandidate(join(root, project.name, "agent-transcripts", `${id}.txt`));
+  }
+
+  for (const path of candidates) {
+    if (existsSync(path)) return path;
+  }
+
+  for (const project of safeDirectories(root)) {
     const folder = join(root, project.name, "agent-transcripts", id);
     if (!existsSync(folder)) continue;
     try {
-      const match = readdirSync(folder).find((name) => name.endsWith(".jsonl"));
+      const match = readdirSync(folder).find((name) => name.endsWith(".jsonl") || name.endsWith(".txt"));
       if (match) return join(folder, match);
     } catch {
       // Ignore unreadable project transcript folders.
@@ -451,22 +478,41 @@ function findCodexPath(roots: string[], id: string): string | undefined {
 }
 
 function readCursorMessages(path: string): NativeHistoryMessage[] {
+  if (path.endsWith(".txt")) return readCursorPlainTranscript(path);
   return readJsonLinesWindow(path).flatMap((row, index) => {
-    const role = row.role === "user" || row.role === "assistant"
-      ? row.role
-      : undefined;
+    const role = resolveCursorRole(row);
     if (!role) return [];
     const message = readRecord(row.message) ?? row;
     const text = cleanCursorMessageText(readMessageContent(message.content), role);
     if (!text) return [];
     const createdAt = readIsoDate(row.timestamp) ?? readIsoDate(message.timestamp);
     return [{
-      id: readString(row.uuid) ?? readString(message.id) ?? `cursor-${index}`,
+      id: readString(row.uuid) ?? readString(message.id) ?? readString(row.id) ?? `cursor-${index}`,
       role,
       text,
       ...(createdAt ? { createdAt } : {}),
     }];
   });
+}
+
+function readCursorPlainTranscript(path: string): NativeHistoryMessage[] {
+  try {
+    const text = cleanMessageText(readFileSync(path, "utf8"));
+    if (!text) return [];
+    return [{ id: "cursor-plain-0", role: "assistant", text }];
+  } catch {
+    return [];
+  }
+}
+
+function resolveCursorRole(row: Record<string, unknown>): "user" | "assistant" | undefined {
+  const role = readString(row.role)?.toLowerCase();
+  if (role === "user" || role === "human") return "user";
+  if (role === "assistant" || role === "model") return "assistant";
+  const type = readString(row.type)?.toLowerCase();
+  if (type === "user" || type === "human" || type === "user_message") return "user";
+  if (type === "assistant" || type === "model" || type === "agent_message") return "assistant";
+  return undefined;
 }
 
 function readClaudeMessages(path: string): NativeHistoryMessage[] {
@@ -508,7 +554,10 @@ function readMessageContent(value: unknown): string {
   if (!Array.isArray(value)) return "";
   return value.flatMap((item) => {
     const record = readRecord(item);
-    return record?.type === "text" && typeof record.text === "string" ? [record.text] : [];
+    if (!record) return [];
+    if (record.type === "text" && typeof record.text === "string") return [record.text];
+    if (record.type === "thinking" && typeof record.thinking === "string") return [record.thinking];
+    return [];
   }).join("\n");
 }
 

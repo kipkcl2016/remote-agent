@@ -12,15 +12,66 @@ type ComposerHeaderRow = {
   value: string;
 };
 
+type ComposerHeaderSource = {
+  composerId: string;
+  header: Record<string, unknown>;
+  lastUpdatedAt?: number | null;
+  createdAt?: number | null;
+  isArchived?: boolean;
+  isSubagent?: boolean;
+};
+
 /**
  * Read Cursor IDE sidebar sessions from composerHeaders in state.vscdb.
- * This is the same index the Workspaces panel uses for titles and archive state.
+ * Supports the legacy `composerHeaders` SQL table and Cursor 3.0+ `composer.composerHeaders`
+ * in ItemTable (same index the Agents sidebar uses after the global migration).
  */
 export function scanCursorComposerHeaders(dbPath: string): NativeHistorySession[] {
   if (!dbPath || !existsSync(dbPath)) return [];
   let database: DatabaseSync | undefined;
   try {
     database = new DatabaseSync(dbPath, { readOnly: true });
+    const sources = readComposerHeaderSources(database);
+    const sessions: NativeHistorySession[] = [];
+    for (const source of sources) {
+      const session = mapComposerHeaderSource(database, source);
+      if (session) sessions.push(session);
+    }
+    return sessions;
+  } catch {
+    return [];
+  } finally {
+    database?.close();
+  }
+}
+
+/** Cursor stores per-project transcripts under `~/.cursor/projects/<slug>/agent-transcripts/`. */
+export function cursorProjectSlugFromCwd(cwd: string): string | undefined {
+  const trimmed = cwd.trim();
+  if (!trimmed) return undefined;
+  if (trimmed.startsWith("/")) {
+    return trimmed.replace(/^\/+/, "").replace(/\//g, "-");
+  }
+  return trimmed.replace(/[:/\\]+/g, "-").replace(/^-+/, "") || undefined;
+}
+
+export function indexCursorChatIds(cursorChatsDir: string): Set<string> {
+  if (!cursorChatsDir || !existsSync(cursorChatsDir)) return new Set();
+  const ids = new Set<string>();
+  walkMetaDirs(cursorChatsDir, (sessionId) => {
+    ids.add(sessionId);
+  });
+  return ids;
+}
+
+function readComposerHeaderSources(database: DatabaseSync): ComposerHeaderSource[] {
+  const fromTable = readComposerHeaderTable(database);
+  if (fromTable.length > 0) return fromTable;
+  return readComposerHeadersItemTable(database);
+}
+
+function readComposerHeaderTable(database: DatabaseSync): ComposerHeaderSource[] {
+  try {
     const rows = database
       .prepare(
         `SELECT composerId, lastUpdatedAt, createdAt, isArchived, isSubagent, value
@@ -32,25 +83,13 @@ export function scanCursorComposerHeaders(dbPath: string): NativeHistorySession[
     return rows.flatMap((row) => {
       try {
         const header = JSON.parse(row.value) as Record<string, unknown>;
-        if (header.isArchived === true || header.isDraft === true) return [];
-        const title = readString(header.name);
-        if (!title) return [];
-        const cwd = resolveComposerCwd(header);
-        if (!cwd) return [];
-        const updatedAt = readEpochDate(row.lastUpdatedAt)
-          ?? readEpochDate(header.lastUpdatedAt)
-          ?? new Date().toISOString();
-        const createdAt = readEpochDate(row.createdAt) ?? readEpochDate(header.createdAt);
         return [{
-          id: row.composerId,
-          agent: "cursor" as const,
-          title: cleanTitle(title),
-          cwd,
-          ...(createdAt ? { createdAt } : {}),
-          updatedAt,
-          status: "completed" as const,
-          resumable: false,
-          source: "native" as const,
+          composerId: row.composerId,
+          header,
+          lastUpdatedAt: row.lastUpdatedAt,
+          createdAt: row.createdAt,
+          isArchived: row.isArchived === 1 || header.isArchived === true,
+          isSubagent: row.isSubagent === 1 || header.isSubagent === true,
         }];
       } catch {
         return [];
@@ -58,18 +97,92 @@ export function scanCursorComposerHeaders(dbPath: string): NativeHistorySession[
     });
   } catch {
     return [];
-  } finally {
-    database?.close();
   }
 }
 
-export function indexCursorChatIds(cursorChatsDir: string): Set<string> {
-  if (!cursorChatsDir || !existsSync(cursorChatsDir)) return new Set();
-  const ids = new Set<string>();
-  walkMetaDirs(cursorChatsDir, (sessionId) => {
-    ids.add(sessionId);
-  });
-  return ids;
+function readComposerHeadersItemTable(database: DatabaseSync): ComposerHeaderSource[] {
+  try {
+    const row = database
+      .prepare(`SELECT value FROM ItemTable WHERE key = 'composer.composerHeaders' LIMIT 1`)
+      .get() as { value?: string | Buffer } | undefined;
+    const raw = row?.value;
+    const text = typeof raw === "string"
+      ? raw
+      : raw instanceof Buffer
+        ? raw.toString("utf8")
+        : undefined;
+    if (!text) return [];
+    const parsed = JSON.parse(text) as { allComposers?: unknown };
+    if (!Array.isArray(parsed.allComposers)) return [];
+    return parsed.allComposers.flatMap((item) => {
+      const header = asRecord(item);
+      if (!header) return [];
+      const composerId = readString(header.composerId);
+      if (!composerId) return [];
+      return [{
+        composerId,
+        header,
+        lastUpdatedAt: typeof header.lastUpdatedAt === "number" ? header.lastUpdatedAt : null,
+        createdAt: typeof header.createdAt === "number" ? header.createdAt : null,
+        isArchived: header.isArchived === true,
+        isSubagent: header.isSubagent === true,
+      }];
+    });
+  } catch {
+    return [];
+  }
+}
+
+function mapComposerHeaderSource(
+  database: DatabaseSync,
+  source: ComposerHeaderSource,
+): NativeHistorySession | undefined {
+  try {
+    const { header, composerId } = source;
+    if (source.isArchived || source.isSubagent || header.isArchived === true || header.isDraft === true) {
+      return undefined;
+    }
+    const title = readString(header.name) ?? readComposerDataTitle(database, composerId);
+    if (!title) return undefined;
+    const cwd = resolveComposerCwd(header);
+    if (!cwd) return undefined;
+    const updatedAt = readEpochDate(source.lastUpdatedAt)
+      ?? readEpochDate(header.lastUpdatedAt)
+      ?? new Date().toISOString();
+    const createdAt = readEpochDate(source.createdAt) ?? readEpochDate(header.createdAt);
+    return {
+      id: composerId,
+      agent: "cursor",
+      title: cleanTitle(title),
+      cwd,
+      ...(createdAt ? { createdAt } : {}),
+      updatedAt,
+      status: "completed",
+      resumable: false,
+      source: "native",
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function readComposerDataTitle(database: DatabaseSync, composerId: string): string | undefined {
+  try {
+    const row = database
+      .prepare(`SELECT value FROM cursorDiskKV WHERE key = ? LIMIT 1`)
+      .get(`composerData:${composerId}`) as { value?: string | Buffer } | undefined;
+    const raw = row?.value;
+    const text = typeof raw === "string"
+      ? raw
+      : raw instanceof Buffer
+        ? raw.toString("utf8")
+        : undefined;
+    if (!text) return undefined;
+    const data = JSON.parse(text) as Record<string, unknown>;
+    return readString(data.name) ?? readString(data.title);
+  } catch {
+    return undefined;
+  }
 }
 
 function resolveComposerCwd(header: Record<string, unknown>): string | undefined {
