@@ -1,5 +1,7 @@
 # Remote Agent
 
+[![Build Release Artifacts](https://github.com/kipkcl2016/remote-agent/actions/workflows/release-artifacts.yml/badge.svg)](https://github.com/kipkcl2016/remote-agent/actions/workflows/release-artifacts.yml)
+
 Remote Agent 是一个移动端控制台 + macOS 本地网关，用统一界面操作 Cursor Agent、Claude Code 和 Codex。当前 MVP 支持：
 
 - 一次性 6 位配对码与设备令牌认证
