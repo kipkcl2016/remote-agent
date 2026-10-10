@@ -11,6 +11,7 @@
     "test:sites": "node --test tests/sites-worker.test.mjs",
     "test:gateway-stream": "node --experimental-strip-types --test tests/gateway-session-stream.test.mjs",
     "test:project-sessions": "node --experimental-strip-types --test tests/project-sessions.test.mjs",
+    "test:session-archive": "node --experimental-strip-types --test tests/session-archive.test.mjs",
     "predev": "npm run check:runtime",
     "dev": "vite",
     "prebuild": "npm run check:runtime",

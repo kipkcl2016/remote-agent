@@ -1206,7 +1206,7 @@ test("[SESSION-001] each tab and project keeps at most 20 recent sessions", asyn
   await expect(bulkProject.locator(".session-row")).toHaveCount(20);
 });
 
-test("[SESSION-009] newly completed sessions stay unread until opened", async ({ page }) => {
+test("[SESSION-002] newly completed sessions stay unread until opened", async ({ page }) => {
   const gateway = await installConnectedGateway(page);
   await page.goto("/");
   await expect(page.getByText("TestMac.local")).toBeVisible();
@@ -1479,4 +1479,83 @@ test("[CONN-001] background sync failure clears online UI", async ({ page }) => 
   await page.waitForTimeout(900);
   await expect(page.getByTestId("new-session")).toHaveCount(0);
   await expect(page.locator(".connection-status-button .online-dot.is-offline")).toBeVisible();
+});
+
+test("[SESSION-009] archive hides session from default list and restore brings it back", async ({ page }) => {
+  await installConnectedGateway(page);
+  await page.goto("/");
+  await expect(page.getByTestId("session-cursor-session")).toBeVisible();
+  await page.getByTestId("session-archive-cursor-session").click();
+  await expect(page.getByText("已存档，可在「已存档」中恢复")).toBeVisible();
+  await expect(page.getByTestId("session-cursor-session")).toHaveCount(0);
+  await page.getByTestId("view-archived").click();
+  await expect(page.getByTestId("session-cursor-session")).toBeVisible();
+  await page.getByTestId("session-restore-cursor-session").click();
+  await expect(page.getByText("已恢复到会话列表")).toBeVisible();
+  await page.getByTestId("view-recent").click();
+  await expect(page.getByTestId("session-cursor-session")).toBeVisible();
+});
+
+test("[SESSION-009] running sessions cannot be archived from the list", async ({ page }) => {
+  await installConnectedGateway(page);
+  await page.goto("/");
+  await expect(page.getByTestId("session-codex-session")).toBeVisible();
+  await expect(page.getByTestId("session-archive-codex-session")).toHaveCount(0);
+});
+
+test("[SESSION-009] archived cache rows stay hidden after live sync", async ({ page }) => {
+  const archivedSession: MockSession = {
+    id: "archived-live",
+    nativeId: "archived-native",
+    agent: "cursor",
+    title: "应被存档过滤的缓存会话",
+    cwd: "/Users/test/Projects/archived",
+    projectId: "project-archived",
+    projectName: "archived",
+    permissionMode: "ask",
+    status: "completed",
+    createdAt: now,
+    updatedAt: now,
+  };
+  await page.addInitScript(({ url, timestamp }) => {
+    localStorage.setItem("remote-agent.gateway.url", url);
+    localStorage.setItem("remote-agent.gateway.token", "test-token");
+    localStorage.setItem("remote-agent.session-archive.v1", JSON.stringify({
+      version: 1,
+      url,
+      archivedAt: { "Cursor:archived-live": timestamp },
+    }));
+    localStorage.setItem("remote-agent.session-cache.v1", JSON.stringify({
+      version: 1,
+      url,
+      hostname: "CachedMac.local",
+      savedAt: timestamp,
+      sessions: [{
+        id: "archived-live",
+        source: "gateway",
+        resumable: true,
+        agent: "Cursor",
+        title: "应被存档过滤的缓存会话",
+        projectId: "project-archived",
+        project: "archived",
+        branch: "受限执行",
+        status: "done",
+        updatedAt: timestamp,
+      }],
+    }));
+  }, { url: gatewayUrl, timestamp: now });
+
+  let releaseSync = () => undefined;
+  const syncGate = new Promise<void>((resolve) => { releaseSync = resolve; });
+  await page.route(`${gatewayUrl}/**`, async (route) => {
+    await syncGate;
+    await handleGatewayRoute(route, [archivedSession], new Map());
+  });
+
+  await page.goto("/");
+  await expect(page.getByTestId("session-archived-live")).toHaveCount(0);
+  releaseSync();
+  await expect(page.getByTestId("session-archived-live")).toHaveCount(0);
+  await page.getByTestId("view-archived").click();
+  await expect(page.getByTestId("session-archived-live")).toBeVisible();
 });
