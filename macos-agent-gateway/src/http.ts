@@ -184,9 +184,16 @@ export function createGatewayHttpServer(options: GatewayHttpOptions): Server {
         if (!isAgentKind(agent)) throw new ClientError(400, "Unknown agent");
         const id = readRequiredString(body, "id", 200);
         const nativeId = readOptionalString(body, "nativeId", 200);
-        const restored = service.restoreSession(currentDeviceId, agent, id, nativeId);
-        if (!restored) throw new ClientError(404, "Archived session not found");
-        sendJson(response, 200, { data: { restored: true } });
+        try {
+          const restored = await service.restoreSession(currentDeviceId, agent, id, nativeId);
+          if (!restored) throw new ClientError(404, "Archived session not found");
+          sendJson(response, 200, { data: { restored: true } });
+        } catch (error) {
+          if (error instanceof ArchiveConflictError) {
+            throw new ClientError(409, error.message);
+          }
+          throw error;
+        }
         return;
       }
 

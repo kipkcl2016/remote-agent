@@ -9,6 +9,7 @@ import {
   sessionArchiveKeys,
   type SessionArchiveRecord,
 } from "./session-archive.js";
+import { applyNativeDesktopArchive } from "./native-desktop-archive.js";
 import { GatewayStore } from "./store.js";
 import { ProjectResolver } from "./project-resolver.js";
 import type { NativeHistoryService } from "./history.js";
@@ -64,15 +65,25 @@ export class GatewayService {
   ): Promise<SessionArchiveRecord[]> {
     const blocked = await this.#resolveArchiveBlockReason(agent, id, nativeId, history);
     if (blocked) throw new ArchiveConflictError(blocked);
+    const desktopId = nativeId ?? id;
+    const desktop = await applyNativeDesktopArchive(agent, desktopId, "archive");
+    if (!desktop.ok) {
+      throw new ArchiveConflictError(desktop.detail ?? "Failed to archive on desktop Agent");
+    }
     return this.store.archiveSession(deviceId, agent, id, nativeId);
   }
 
-  restoreSession(
+  async restoreSession(
     deviceId: string,
     agent: AgentKind,
     id: string,
     nativeId?: string,
-  ): boolean {
+  ): Promise<boolean> {
+    const desktopId = nativeId ?? id;
+    const desktop = await applyNativeDesktopArchive(agent, desktopId, "unarchive");
+    if (!desktop.ok) {
+      throw new ArchiveConflictError(desktop.detail ?? "Failed to restore on desktop Agent");
+    }
     return this.store.restoreSession(deviceId, agent, id, nativeId);
   }
 
