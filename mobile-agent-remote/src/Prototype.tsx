@@ -402,6 +402,7 @@ export default function Prototype() {
   const [agentAvailability, setAgentAvailability] = useState<AgentAvailabilityApi[] | null>(null);
   /** null = show channel picker before loading any agent sessions */
   const [selectedChannel, setSelectedChannel] = useState<AgentName | null>(null);
+  const [channelSwitchOpen, setChannelSwitchOpen] = useState(false);
   const [remoteOnline, setRemoteOnline] = useState(false);
   const [connectionBusy, setConnectionBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -795,6 +796,7 @@ export default function Prototype() {
   const selectAgentFilter = (nextFilter: (typeof filters)[number]) => {
     keyboard.hide();
     if (nextFilter === "全部") {
+      setChannelSwitchOpen(false);
       setSelectedChannel(null);
       setFilter("全部");
       setSessions([]);
@@ -803,6 +805,7 @@ export default function Prototype() {
       return;
     }
     selectChannel(nextFilter);
+    setChannelSwitchOpen(false);
   };
 
   const openNewSession = () => {
@@ -829,6 +832,7 @@ export default function Prototype() {
     setPairedDevices([]);
     setAgentUsages(null);
     setAgentAvailability(null);
+    setChannelSwitchOpen(false);
     setSelectedChannel(null);
     setFilter("全部");
     setWorkingDirectory("");
@@ -1074,6 +1078,10 @@ export default function Prototype() {
         closeFilePreview();
         return;
       }
+      if (channelSwitchOpen) {
+        setChannelSwitchOpen(false);
+        return;
+      }
       if (newSessionOpen) {
         setNewSessionOpen(false);
         return;
@@ -1101,6 +1109,7 @@ export default function Prototype() {
       void listener.then((handle) => handle.remove());
     };
   }, [
+    channelSwitchOpen,
     closeSessionDetail,
     closeFilePreview,
     deviceOpen,
@@ -1865,25 +1874,25 @@ export default function Prototype() {
 
           <section className="session-section" aria-labelledby="recent-title">
             <div className="section-heading">
-              <h2 id="recent-title">
-                {!selectedChannel
-                  ? "选择渠道"
-                  : sessionView === "recent"
-                    ? `${selectedChannel} · 最近`
-                    : `${selectedChannel} · 项目`}
-              </h2>
-              <div className="section-heading-actions">
-                {selectedChannel ? (
+              {selectedChannel ? (
+                <h2 id="recent-title" className="channel-title">
                   <button
                     type="button"
-                    className="channel-switch-button"
-                    onClick={() => selectAgentFilter("全部")}
+                    className="channel-title-button"
+                    onClick={() => setChannelSwitchOpen(true)}
+                    aria-haspopup="dialog"
+                    aria-expanded={channelSwitchOpen}
+                    aria-label={`切换渠道，当前 ${selectedChannel}`}
                     data-testid="switch-channel"
-                    aria-label="返回渠道选择"
                   >
-                    切换渠道
+                    <span className="channel-title-label">{selectedChannel}</span>
+                    <TbChevronDown className="channel-title-chevron" aria-hidden="true" />
                   </button>
-                ) : null}
+                </h2>
+              ) : (
+                <h2 id="recent-title">选择渠道</h2>
+              )}
+              <div className="section-heading-actions">
                 {selectedChannel ? (
                   <>
                     <div className="session-view-switch" role="tablist" aria-label="会话浏览方式">
@@ -2541,6 +2550,64 @@ export default function Prototype() {
             )}
           </div>
         </section>
+      ) : null}
+
+      {channelSwitchOpen && selectedChannel ? (
+        <div
+          className="channel-switch-overlay"
+          role="presentation"
+          onClick={() => setChannelSwitchOpen(false)}
+          data-testid="channel-switch-overlay"
+        >
+          <div
+            className="channel-switch-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="channel-switch-title"
+            data-testid="channel-switch-modal"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="channel-switch-modal-header">
+              <strong id="channel-switch-title">切换渠道</strong>
+              <button
+                type="button"
+                className="channel-switch-modal-close"
+                onClick={() => setChannelSwitchOpen(false)}
+                aria-label="关闭渠道切换"
+                data-testid="channel-switch-close"
+              >
+                <TbX aria-hidden="true" />
+              </button>
+            </div>
+            <div className="channel-switch-modal-list" role="listbox" aria-label="已安装的 Agent 渠道">
+              {installedChannels.map((agent) => {
+                const selected = agent === selectedChannel;
+                const caption = agentInstallCaption(agent);
+                return (
+                  <button
+                    key={agent}
+                    type="button"
+                    role="option"
+                    aria-selected={selected}
+                    className={`channel-switch-option${selected ? " is-selected" : ""}`}
+                    onClick={() => {
+                      selectChannel(agent);
+                      setChannelSwitchOpen(false);
+                    }}
+                    data-testid={`switch-channel-option-${agent}`}
+                  >
+                    <AgentIcon agent={agent} framed />
+                    <span className="channel-switch-option-copy">
+                      <span className="channel-switch-option-name">{agent}</span>
+                      {caption ? <small>{caption}</small> : null}
+                    </span>
+                    {selected ? <span className="channel-switch-option-current">当前</span> : null}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
       ) : null}
 
       <BottomSheet
