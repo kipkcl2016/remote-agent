@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { EventHub } from "./event-hub.js";
 import { AgentRegistry } from "./agent-registry.js";
 import { resolveAllowedWorkingDirectory } from "./security.js";
+import { resolveWorkbuddyCreateCwd } from "./workbuddy.js";
 import {
   buildSessionArchiveLookupSet,
   filterByArchiveVisibility,
@@ -109,7 +110,11 @@ export class GatewayService {
   async startSession(input: StartSessionInput): Promise<GatewaySession> {
     const adapter = this.registry.get(input.agent);
     if (!adapter) throw new Error(`Unsupported agent: ${input.agent}`);
-    const cwd = resolveAllowedWorkingDirectory(input.cwd, this.allowedRoots);
+    // WorkBuddy create with no real project: use shared ~/WorkBuddy/_temp (not dated folders).
+    const requestedCwd = input.agent === "workbuddy"
+      ? resolveWorkbuddyCreateCwd(input.cwd)
+      : input.cwd;
+    const cwd = resolveAllowedWorkingDirectory(requestedCwd, this.allowedRoots);
     const now = new Date().toISOString();
     const session: GatewaySession = {
       id: randomUUID(),

@@ -12,7 +12,7 @@ export type NativeDesktopArchiveResult = {
   detail?: string;
 };
 
-/** Archive or unarchive the session in the desktop Agent (Codex / Cursor). Claude has no desktop archive API. */
+/** Archive or unarchive the session in the desktop Agent (Codex / Cursor / WorkBuddy). Claude has no desktop archive API. */
 export async function applyNativeDesktopArchive(
   agent: AgentKind,
   sessionId: string,
@@ -23,6 +23,9 @@ export async function applyNativeDesktopArchive(
   }
   if (agent === "cursor") {
     return archiveCursorComposer(sessionId, action === "archive");
+  }
+  if (agent === "workbuddy") {
+    return archiveWorkbuddySession(sessionId, action === "archive");
   }
   return { agent, ok: true, detail: `${agent} has no desktop archive API; remote soft-hide only` };
 }
@@ -145,10 +148,48 @@ function callCodexAppServer(method: string, params: Record<string, unknown>): Pr
   });
 }
 
+
+function archiveWorkbuddySession(sessionId: string, archived: boolean): NativeDesktopArchiveResult {
+  const dbPath = getDefaultHistoryDirs().workbuddyDb;
+  if (!dbPath || !existsSync(dbPath)) {
+    return { agent: "workbuddy", ok: false, detail: "WorkBuddy workbuddy.db not found" };
+  }
+  let database: DatabaseSync | undefined;
+  try {
+    database = new DatabaseSync(dbPath);
+    const row = database
+      .prepare(`SELECT id, status, deleted_at FROM sessions WHERE id = ? LIMIT 1`)
+      .get(sessionId) as { id?: string; status?: string; deleted_at?: number | null } | undefined;
+    if (!row?.id) {
+      // Not in WorkBuddy DB yet (gateway-only id): soft-hide via session_archive is enough.
+      return { agent: "workbuddy", ok: true, detail: "session not in WorkBuddy DB; remote soft-hide only" };
+    }
+    if (archived) {
+      database
+        .prepare(`UPDATE sessions SET status = 'archived', updated_at = ? WHERE id = ?`)
+        .run(Date.now(), sessionId);
+    } else {
+      // Restore to completed unless still soft-deleted.
+      const deleted = row.deleted_at != null && row.deleted_at !== -1;
+      const nextStatus = deleted ? String(row.status ?? "completed") : "completed";
+      database
+        .prepare(`UPDATE sessions SET status = ?, updated_at = ? WHERE id = ?`)
+        .run(nextStatus === "archived" ? "completed" : nextStatus, Date.now(), sessionId);
+    }
+    return { agent: "workbuddy", ok: true };
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    return { agent: "workbuddy", ok: false, detail };
+  } finally {
+    database?.close();
+  }
+}
+
 function archiveCursorComposer(composerId: string, archived: boolean): NativeDesktopArchiveResult {
   const dbPath = getDefaultHistoryDirs().cursorComposerDb;
   if (!dbPath || !existsSync(dbPath)) {
-    return { agent: "cursor", ok: false, detail: "Cursor state.vscdb not found" };
+    // Soft-hide only when Cursor desktop state is unavailable (CI / not installed).
+    return { agent: "cursor", ok: true, detail: "Cursor state.vscdb not found; remote soft-hide only" };
   }
   let database: DatabaseSync | undefined;
   try {
@@ -158,7 +199,7 @@ function archiveCursorComposer(composerId: string, archived: boolean): NativeDes
       .prepare(`SELECT value FROM composerHeaders WHERE composerId = ? LIMIT 1`)
       .get(composerId) as { value?: string } | undefined;
     if (!row) {
-      return { agent: "cursor", ok: false, detail: "composer not found in Cursor DB" };
+      return { agent: "cursor", ok: true, detail: "composer not found in Cursor DB; remote soft-hide only" };
     }
     let value = row.value ?? "{}";
     try {

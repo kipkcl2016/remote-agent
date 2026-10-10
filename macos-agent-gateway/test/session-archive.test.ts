@@ -87,6 +87,7 @@ test("session archive stores alias keys and filters sessions per device", async 
 
   assert.equal(store.restoreSession(deviceA, "cursor", "gw-1", "native-1"), true);
   assert.equal(service.listSessions({ deviceId: deviceA, visibility: "active" }).length, 2);
+  store.close();
   rmSync(root, { recursive: true, force: true });
 });
 
@@ -157,46 +158,49 @@ test("session archive HTTP rejects running sessions and scopes by bearer device"
   const baseUrl = `http://127.0.0.1:${address.port}`;
   const authA = { Authorization: `Bearer ${tokenA}` };
 
-  const blocked = await fetch(`${baseUrl}/v1/session-archive`, {
-    method: "POST",
-    headers: { ...authA, "Content-Type": "application/json" },
-    body: JSON.stringify({ agent: "codex", id: "running-session" }),
-  });
-  assert.equal(blocked.status, 409);
+  try {
+    const blocked = await fetch(`${baseUrl}/v1/session-archive`, {
+      method: "POST",
+      headers: { ...authA, "Content-Type": "application/json" },
+      body: JSON.stringify({ agent: "codex", id: "running-session" }),
+    });
+    assert.equal(blocked.status, 409);
 
-  const archived = await fetch(`${baseUrl}/v1/session-archive`, {
-    method: "POST",
-    headers: { ...authA, "Content-Type": "application/json" },
-    body: JSON.stringify({ agent: "cursor", id: "done-session", nativeId: "done-native" }),
-  });
-  assert.equal(archived.status, 200);
+    const archived = await fetch(`${baseUrl}/v1/session-archive`, {
+      method: "POST",
+      headers: { ...authA, "Content-Type": "application/json" },
+      body: JSON.stringify({ agent: "cursor", id: "done-session", nativeId: "done-native" }),
+    });
+    assert.equal(archived.status, 200);
 
-  const activeSessions = await fetch(`${baseUrl}/v1/sessions?visibility=active`, { headers: authA });
-  const activeBody = (await activeSessions.json()) as { data: Array<{ id: string }> };
-  assert.equal(activeBody.data.some((session) => session.id === "done-session"), false);
+    const activeSessions = await fetch(`${baseUrl}/v1/sessions?visibility=active`, { headers: authA });
+    const activeBody = (await activeSessions.json()) as { data: Array<{ id: string }> };
+    assert.equal(activeBody.data.some((session) => session.id === "done-session"), false);
 
-  const archivedSessions = await fetch(`${baseUrl}/v1/sessions?visibility=archived`, { headers: authA });
-  const archivedBody = (await archivedSessions.json()) as { data: Array<{ id: string }> };
-  assert.equal(archivedBody.data.some((session) => session.id === "done-session"), true);
+    const archivedSessions = await fetch(`${baseUrl}/v1/sessions?visibility=archived`, { headers: authA });
+    const archivedBody = (await archivedSessions.json()) as { data: Array<{ id: string }> };
+    assert.equal(archivedBody.data.some((session) => session.id === "done-session"), true);
 
-  const listArchive = await fetch(`${baseUrl}/v1/session-archive`, { headers: authA });
-  const listBody = (await listArchive.json()) as { data: Array<{ sessionKey: string }> };
-  assert.equal(listBody.data.length, 2);
+    const listArchive = await fetch(`${baseUrl}/v1/session-archive`, { headers: authA });
+    const listBody = (await listArchive.json()) as { data: Array<{ sessionKey: string }> };
+    assert.equal(listBody.data.length, 2);
 
-  const otherDeviceActive = await fetch(`${baseUrl}/v1/sessions?visibility=active`, {
-    headers: { Authorization: `Bearer ${tokenB}` },
-  });
-  const otherBody = (await otherDeviceActive.json()) as { data: unknown[] };
-  assert.equal(otherBody.data.length, 2);
+    const otherDeviceActive = await fetch(`${baseUrl}/v1/sessions?visibility=active`, {
+      headers: { Authorization: `Bearer ${tokenB}` },
+    });
+    const otherBody = (await otherDeviceActive.json()) as { data: unknown[] };
+    assert.equal(otherBody.data.length, 2);
 
-  const restored = await fetch(`${baseUrl}/v1/session-archive/restore`, {
-    method: "POST",
-    headers: { ...authA, "Content-Type": "application/json" },
-    body: JSON.stringify({ agent: "cursor", id: "done-session", nativeId: "done-native" }),
-  });
-  assert.equal(restored.status, 200);
-
-  server.close();
-  await once(server, "close");
-  rmSync(root, { recursive: true, force: true });
+    const restored = await fetch(`${baseUrl}/v1/session-archive/restore`, {
+      method: "POST",
+      headers: { ...authA, "Content-Type": "application/json" },
+      body: JSON.stringify({ agent: "cursor", id: "done-session", nativeId: "done-native" }),
+    });
+    assert.equal(restored.status, 200);
+  } finally {
+    server.close();
+    await once(server, "close");
+    store.close();
+    rmSync(root, { recursive: true, force: true });
+  }
 });
