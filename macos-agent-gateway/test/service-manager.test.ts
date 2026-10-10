@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { platform } from "node:os";
+import { delimiter } from "node:path";
 import test from "node:test";
 import {
   buildLaunchAgentPlist,
@@ -27,6 +28,25 @@ test("launchd plist pins executable paths and escapes user values", () => {
   assert.match(plist, /capacitor:\/\/localhost/);
   assert.match(plist, /http:\/\/127\.0\.0\.1:4173/);
   assert.doesNotMatch(plist, /<string>\/opt\/node & tools/);
+});
+
+test("launchd plist joins multiple REMOTE_AGENT_ROOTS for Codex worktrees", () => {
+  const plist = buildLaunchAgentPlist({
+    nodePath: "/opt/node/bin/node",
+    entryPath: "/Users/test/.remote-agent/runtime/index.js",
+    roots: ["/Users/test/projects", "/Users/test/.codex/worktrees"],
+    dataDir: "/Users/test/.remote-agent",
+    stdoutPath: "/Users/test/.remote-agent/logs/gateway.log",
+    stderrPath: "/Users/test/.remote-agent/logs/gateway.error.log",
+    path: "/opt/homebrew/bin:/usr/bin:/bin",
+  });
+
+  assert.match(
+    plist,
+    new RegExp(
+      `<key>REMOTE_AGENT_ROOTS</key>\\s*<string>/Users/test/projects${delimiter}/Users/test/\\.codex/worktrees</string>`,
+    ),
+  );
 });
 
 test("detects macOS privacy-protected project roots", () => {

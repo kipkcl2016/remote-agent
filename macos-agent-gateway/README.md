@@ -27,6 +27,21 @@ npm run service:status                            # 查看 launchd 状态
 npm run service:uninstall                         # 停止并移除服务，保留数据
 ```
 
+### 多个白名单根目录（含 Codex worktree）
+
+续接、新建任务与 `files/read` 仍要求会话 `cwd` 落在 **`REMOTE_AGENT_ROOTS` 中显式列出的路径** 内；不会自动信任整个 home 目录。Codex 在 `~/.codex/worktrees/...` 下的工作副本需要把该目录作为第二个根加入白名单，例如：
+
+```bash
+npm run build
+npm run service:install -- "$HOME/projects" "$HOME/.codex/worktrees"
+```
+
+LaunchAgent 会把多个根写入 `REMOTE_AGENT_ROOTS`（macOS 上用 `:` 连接，与手动设置 `REMOTE_AGENT_ROOTS=$HOME/projects:$HOME/.codex/worktrees` 等价）。开发时也可：
+
+```bash
+REMOTE_AGENT_ROOTS="$HOME/projects:$HOME/.codex/worktrees" npm run dev
+```
+
 使用 `npm run pair` 时，脚本会调用回环地址上的 `/v1/pairing/start`；配对码不会写入数据库或日志。
 
 后台服务默认监听 `0.0.0.0:17821` 供同一私有网络内的手机访问，并把编译产物复制到

@@ -80,8 +80,8 @@ REMOTE_AGENT_HOST=127.0.0.1
 # 网关端口（默认 17821）
 REMOTE_AGENT_PORT=17821
 
-# 允许的项目根目录（多个用冒号或分号分隔）
-REMOTE_AGENT_ROOTS=/path/to/projects:/another/path
+# 允许的项目根目录（多个用冒号或分号分隔；Codex worktree 示例）
+REMOTE_AGENT_ROOTS=/path/to/projects:/Users/me/.codex/worktrees
 
 # 数据存储目录（默认 ~/.remote-agent）
 REMOTE_AGENT_DATA_DIR=$HOME/.remote-agent
@@ -116,12 +116,18 @@ set -e
 
 if [ -z "$1" ]; then
   echo "Usage: $0 <project-root-directory> [additional-root...]"
-  echo "Example: $0 /Users/me/projects"
+  echo "Example: $0 /Users/me/projects /Users/me/.codex/worktrees"
   exit 1
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-export REMOTE_AGENT_ROOTS="$*"
+REMOTE_AGENT_ROOTS="$1"
+shift
+while [ $# -gt 0 ]; do
+  REMOTE_AGENT_ROOTS="$REMOTE_AGENT_ROOTS:$1"
+  shift
+done
+export REMOTE_AGENT_ROOTS
 export REMOTE_AGENT_HOST=\${REMOTE_AGENT_HOST:-127.0.0.1}
 export REMOTE_AGENT_PORT=\${REMOTE_AGENT_PORT:-17821}
 
@@ -137,11 +143,18 @@ setlocal
 
 if "%~1"=="" (
   echo Usage: %~nx0 ^<project-root-directory^> [additional-root...]
-  echo Example: %~nx0 C:\\Users\\me\\projects
+  echo Example: %~nx0 C:\\Users\\me\\projects C:\\Users\\me\\.codex\\worktrees
   exit /b 1
 )
 
-set "REMOTE_AGENT_ROOTS=%*"
+set "REMOTE_AGENT_ROOTS=%~1"
+shift
+:more_roots
+if "%~1"=="" goto roots_done
+set "REMOTE_AGENT_ROOTS=%REMOTE_AGENT_ROOTS%;%~1"
+shift
+goto more_roots
+:roots_done
 if not defined REMOTE_AGENT_HOST set "REMOTE_AGENT_HOST=127.0.0.1"
 if not defined REMOTE_AGENT_PORT set "REMOTE_AGENT_PORT=17821"
 
