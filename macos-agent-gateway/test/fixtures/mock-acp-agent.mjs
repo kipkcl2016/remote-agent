@@ -6,6 +6,8 @@
  */
 import { createInterface } from "node:readline";
 
+const emptyOptions = process.env.MOCK_ACP_EMPTY_OPTIONS === "1";
+const onlyAllowAlways = process.env.MOCK_ACP_ONLY_ALLOW_ALWAYS === "1";
 let nextId = 1;
 const pending = new Map();
 let currentSessionId = null;
@@ -61,11 +63,20 @@ async function handlePrompt(sessionId, promptText) {
       kind: "execute",
       name: "execute",
       status: "pending",
+      rawInput: { command: "echo demo" },
+      locations: [{ path: "/tmp/demo" }],
     },
-    options: [
-      { optionId: "allow-once", name: "Allow once", kind: "allow_once" },
-      { optionId: "reject-once", name: "Reject", kind: "reject_once" },
-    ],
+    options: emptyOptions
+      ? []
+      : onlyAllowAlways
+        ? [
+            { optionId: "allow-always", name: "Allow always", kind: "allow_always" },
+            { optionId: "reject-once", name: "Reject", kind: "reject_once" },
+          ]
+        : [
+            { optionId: "allow-once", name: "Allow once", kind: "allow_once" },
+            { optionId: "reject-once", name: "Reject", kind: "reject_once" },
+          ],
   });
 
   if (cancelled || permission?.outcome?.outcome === "cancelled") {

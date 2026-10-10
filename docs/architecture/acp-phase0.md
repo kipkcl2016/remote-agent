@@ -103,7 +103,7 @@
 | **Agent 内文件/命令** | 在 Mac 上由 Agent/适配器执行；网关 **不向手机暴露** 完整 tool input 策略外泄控制（延续今日 SQLite 风险提示） | 字段白名单与脱敏 |
 | **`session/request_permission`** `kind: read` 且路径落在会话 cwd 子树内 | `auto`/`full`：可 **自动 `allow-once`**；`ask`/`plan`：**自动 `reject-once`** 或进入 `waiting_approval` 并由 **Mac 本机**默认策略处理（与今日「等待 Mac 确认」一致） | 手机 **challenge/resolve API** |
 | **写/删/移/执行**（`edit`/`delete`/`move`/`execute`） | `ask`/`plan`：**不得**静默 `allow_always`；`auto`：仅当 **realpath 仍在会话 cwd 且位于 `REMOTE_AGENT_ROOTS`** 时自动允许单次；`full`：可在 cwd 内放宽 CLI 侧确认，**仍拒绝**白名单外路径 | 手机可选批准 |
-| **`allow_always` / `reject_always`** | PoC **避免持久化** Agent 侧「永远允许」，防止 launchd 无人值守扩大攻击面；仅映射为单次决策 | 可配置 + 审计 |
+| **`allow_always` / `reject_always`** | PoC **禁止**把手机「批准」或 auto/full 映射为 `allow_always`（只选 `allow_once`；没有则拒绝/转手机）；防止 launchd 无人值守扩大攻击面 | 可配置 + 审计 |
 | **ACP Client `fs` 能力** | **禁用**（`readTextFile`/`writeTextFile: false`），避免 Agent 借 Client 读网关进程可见的任意文件 | 若启用，必须逐路径校验 cwd |
 | **额外工作区根**（ACP additional directories） | **不暴露**或严格等于白名单根集合的子集 | 产品定义 |
 | **Cursor 阻塞式扩展** | 无 UI 时 **不得**挂起整个会话：需超时后 `cancelled`/`rejected` 或 PoC 不选 Cursor | 专用移动端卡片 |

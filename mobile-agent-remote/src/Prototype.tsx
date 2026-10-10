@@ -120,6 +120,7 @@ type DetailMessage = {
   approvalChallengeId?: string;
   approvalResolvable?: boolean;
   approvalResolved?: boolean;
+  approvalExpired?: boolean;
 };
 
 type DetailTurn = {
@@ -2941,7 +2942,7 @@ const DetailMessageCard = memo(function DetailMessageCard({
       ) : message.kind === "approval" ? (
         <div className="detail-approval">
           <p>{message.text}</p>
-          {message.approvalResolvable && message.approvalChallengeId && onResolveApproval ? (
+          {message.approvalResolvable && !message.approvalExpired && message.approvalChallengeId && onResolveApproval ? (
             <div className="detail-approval-actions">
               <button
                 type="button"
@@ -3565,7 +3566,8 @@ function sameDetailMessages(left: DetailMessage[], right: DetailMessage[]): bool
       && message.kind === other.kind
       && message.approvalChallengeId === other.approvalChallengeId
       && message.approvalResolvable === other.approvalResolvable
-      && message.approvalResolved === other.approvalResolved;
+      && message.approvalResolved === other.approvalResolved
+      && message.approvalExpired === other.approvalExpired;
   });
 }
 
@@ -3616,13 +3618,62 @@ function appendGatewayEvents(
       const challengeId = typeof event.payload.challengeId === "string"
         ? event.payload.challengeId
         : undefined;
-      const resolvable = event.payload.resolvable === true && Boolean(challengeId);
+      const expired = event.payload.expired === true;
+      const auto = event.payload.auto === true;
+      const resolvable = event.payload.resolvable === true && Boolean(challengeId) && !expired;
       const title = typeof event.payload.title === "string"
         ? event.payload.title
         : typeof event.payload.name === "string"
           ? event.payload.name
           : "工具调用";
       const kind = typeof event.payload.kind === "string" ? event.payload.kind : undefined;
+      const summary = typeof event.payload.summary === "string" ? event.payload.summary : undefined;
+      const selectedKind = typeof event.payload.selectedOptionKind === "string"
+        ? event.payload.selectedOptionKind
+        : undefined;
+      const summaryLine = summary ? `\n${summary}` : "";
+
+      if (expired && challengeId) {
+        let marked = false;
+        for (let index = next.length - 1; index >= 0; index -= 1) {
+          const message = next[index];
+          if (message?.kind === "approval" && message.approvalChallengeId === challengeId) {
+            next[index] = {
+              ...message,
+              approvalResolvable: false,
+              approvalExpired: true,
+              text: `${message.text.replace(/\n处理中…$/, "").replace(/\n已处理$/, "").replace(/\n已过期$/, "")}\n已过期`,
+            };
+            marked = true;
+            break;
+          }
+        }
+        if (!marked) {
+          next.push({
+            id: `event-${event.seq}`,
+            role: "assistant",
+            kind: "approval",
+            approvalChallengeId: challengeId,
+            approvalResolvable: false,
+            approvalExpired: true,
+            text: `审批已过期：${title}${kind ? `（${kind}）` : ""}${summaryLine}`,
+          });
+        }
+        continue;
+      }
+
+      if (auto) {
+        next.push({
+          id: `event-${event.seq}`,
+          role: "assistant",
+          kind: "approval",
+          approvalResolvable: false,
+          approvalResolved: true,
+          text: `已自动允许：${title}${kind ? `（${kind}）` : ""}${selectedKind ? ` → ${selectedKind}` : ""}${summaryLine}`,
+        });
+        continue;
+      }
+
       next.push({
         id: `event-${event.seq}`,
         role: "assistant",
@@ -3630,7 +3681,7 @@ function appendGatewayEvents(
         approvalChallengeId: challengeId,
         approvalResolvable: resolvable,
         text: resolvable
-          ? `需要手机确认：${title}${kind ? `（${kind}）` : ""}`
+          ? `需要手机确认：${title}${kind ? `（${kind}）` : ""}${summaryLine}`
           : "Agent 正在等待 Mac 端确认操作权限。",
       });
       continue;

@@ -7,8 +7,11 @@ import type { AdapterEvent, PermissionMode, RunningAgent } from "../../types.js"
 import { mapAcpSessionUpdate } from "./map-session-update.js";
 import {
   autoSelectPermissionOption,
+  findRejectOption,
   pickDecisionOptionId,
+  summarizeToolParams,
   type AcpPermissionOption,
+  type AcpToolCallSummary,
 } from "./permission-policy.js";
 
 export type AcpLaunchCommand = {
@@ -94,6 +97,16 @@ export async function launchAcpTurn(
       pending.delete(challengeId);
       if (entry.timer) clearTimeout(entry.timer);
       entry.resolve({ outcome: { outcome: "cancelled" } });
+      emit({
+        type: "approval",
+        payload: {
+          challengeId,
+          resolvable: false,
+          expired: true,
+          source: "acp",
+          reason: "cancelled",
+        },
+      });
     }
   };
 
@@ -112,17 +125,45 @@ export async function launchAcpTurn(
             name: option.name,
             kind: option.kind,
           }));
-          const summary: {
-            toolCallId?: string;
-            title?: string;
-            name?: string;
-            kind?: string;
-          } = {
+
+          const locations = Array.isArray(toolCall.locations)
+            ? toolCall.locations
+              .map((loc) => {
+                if (!loc || typeof loc !== "object") return undefined;
+                const path = typeof (loc as { path?: unknown }).path === "string"
+                  ? (loc as { path: string }).path
+                  : undefined;
+                return path ? { path } : undefined;
+              })
+              .filter((loc): loc is { path: string } => Boolean(loc?.path))
+            : undefined;
+
+          const summary: AcpToolCallSummary = {
             ...(typeof toolCall.toolCallId === "string" ? { toolCallId: toolCall.toolCallId } : {}),
             ...(typeof toolCall.title === "string" ? { title: toolCall.title } : {}),
             ...(typeof toolCall.name === "string" ? { name: toolCall.name } : {}),
             ...(typeof toolCall.kind === "string" ? { kind: toolCall.kind } : {}),
+            ...(toolCall.rawInput !== undefined ? { rawInput: toolCall.rawInput } : {}),
+            ...(locations?.length ? { locations } : {}),
           };
+          const paramSummary = summarizeToolParams(summary);
+
+          // Fail-closed: empty options never reach the phone.
+          if (!options.length) {
+            emit({
+              type: "status",
+              payload: {
+                phase: "permission_rejected",
+                reason: "empty_options",
+                toolCallId: summary.toolCallId,
+                title: summary.title,
+                name: summary.name,
+                kind: summary.kind,
+                ...(paramSummary ? { summary: paramSummary } : {}),
+              },
+            });
+            return { outcome: { outcome: "cancelled" } };
+          }
 
           const autoOptionId = autoSelectPermissionOption(
             request.permissionMode,
@@ -130,6 +171,23 @@ export async function launchAcpTurn(
             options,
           );
           if (autoOptionId) {
+            const selected = options.find((option) => option.optionId === autoOptionId);
+            // Non-actionable audit/record for auto/full auto-allow.
+            emit({
+              type: "approval",
+              payload: {
+                resolvable: false,
+                auto: true,
+                source: "acp",
+                toolCallId: summary.toolCallId,
+                title: summary.title,
+                name: summary.name,
+                kind: summary.kind,
+                ...(paramSummary ? { summary: paramSummary } : {}),
+                selectedOptionId: autoOptionId,
+                selectedOptionKind: selected?.kind ?? "allow_once",
+              },
+            });
             return {
               outcome: { outcome: "selected", optionId: autoOptionId },
             };
@@ -146,6 +204,7 @@ export async function launchAcpTurn(
               title: summary.title,
               name: summary.name,
               kind: summary.kind,
+              ...(paramSummary ? { summary: paramSummary } : {}),
               options,
             },
           });
@@ -155,6 +214,17 @@ export async function launchAcpTurn(
               if (!pending.has(challengeId)) return;
               pending.delete(challengeId);
               resolve({ outcome: { outcome: "cancelled" } });
+              // Mark phone card expired so taps don't hit a misleading 404.
+              emit({
+                type: "approval",
+                payload: {
+                  challengeId,
+                  resolvable: false,
+                  expired: true,
+                  source: "acp",
+                  reason: "timeout",
+                },
+              });
               emit({
                 type: "output",
                 payload: {
@@ -265,7 +335,22 @@ export async function launchAcpTurn(
       if (!entry) return false;
       if (decision === "allow" || decision === "deny") {
         const optionId = pickDecisionOptionId(decision, entry.options);
-        if (!optionId) return false;
+        if (!optionId) {
+          // No once-option for allow (or no reject option for deny): fail closed.
+          // Prefer an explicit reject when allow cannot map to allow_once.
+          if (decision === "allow") {
+            const reject = findRejectOption(entry.options);
+            if (reject) {
+              return resolvePending(challengeId, {
+                outcome: { outcome: "selected", optionId: reject.optionId },
+              });
+            }
+            return resolvePending(challengeId, {
+              outcome: { outcome: "cancelled" },
+            });
+          }
+          return false;
+        }
         return resolvePending(challengeId, {
           outcome: { outcome: "selected", optionId },
         });

@@ -78,7 +78,7 @@ Remote Agent 让已授权的移动设备在不持有 Agent API 密钥、不接�
 | `FILE-001` | 查看会话生成的本机文件 | 已实现 | 会话正文中的相对路径、绝对路径和 `file://` Markdown 文件链接由移动端改走已认证网关；网关以会话 cwd 为唯一根目录做 realpath 校验，只返回普通文件，拒绝目录、符号链接逃逸、缺失文件和超过 20 MiB 的文件。图片可嵌入正文并全屏查看，PDF/文本在应用内预览，其他类型提供下载；HTTP(S)、锚点和邮件链接仍按外部链接处理 |
 | `STREAM-001` | 持久化事件与增量拉取 | 已实现 | 事件写入 SQLite，使用全局递增 `seq`；JSON 接口支持 `after` 读取，默认单次最多 500 条、内部上限 2,000 条 |
 | `STREAM-002` | SSE 实时事件 | 已实现 | 网关支持历史补发、事件 id、订阅和 15 秒 heartbeat；移动端网关会话详情优先消费 SSE（`Last-Event-ID` 重连、按 `seq` 去重），连接不可用时回退 JSON 轮询 |
-| `APPROVAL-001` | 工具审批展示与处理 | 受限实现 | Claude **ACP** 路径：`session/request_permission` → `approval`（含 `challengeId`/`resolvable`）→ 手机 `POST /v1/sessions/:id/approvals/:challengeId` 批准/拒绝后 Agent 继续；`ask`/`plan` 默认等手机，`auto` 对 read/search/think 可自动允许，`full` 自动允许（仍受 cwd 白名单）。短进程 CLI 路径仍只能展示“等待 Mac”，不可手机 resolve。环境变量 `REMOTE_AGENT_CLAUDE_TRANSPORT=cli` 可强制回退 CLI |
+| `APPROVAL-001` | 工具审批展示与处理 | 受限实现 | Claude **ACP** 路径：`session/request_permission` → `approval`（含 `challengeId`/`resolvable`/`summary`）→ 手机 `POST .../approvals/:challengeId`；手机「批准」**仅**映射 `allow_once`（无则拒绝，从不发 `allow_always`）；空 options 网关 fail-closed；`ask`/`plan` 等手机；`auto` 按工具名白名单自动 `allow_once` 并发审计事件；`full` 仅自动选明确的 `allow_once`（不盲选 `options[0]`）；超时发 `expired` 置灰卡片。短进程 CLI 不可手机 resolve；`REMOTE_AGENT_CLAUDE_TRANSPORT=cli` 可回退 |
 
 ### 3.4 原生历史
 

@@ -76,7 +76,7 @@ stateDiagram-v2
 | `status` | `status` 或 `phase` | 生命周期状态 |
 | `output` | `stream`, `text` | 用户、助手、stdout/stderr 或 delta 文本 |
 | `tool` | `name`，可选 `id/input/command/status` | 工具/命令执行摘要 |
-| `approval` | `challengeId?`, `resolvable?`, `title/name/kind?`, `options?`, 或旧 `raw` | Claude ACP：`resolvable:true` 时手机可 `POST .../approvals/:challengeId`；旧 CLI 仍可能仅含 `raw`（只能提示等待 Mac） |
+| `approval` | `challengeId?`, `resolvable?`, `title/name/kind?`, `summary?`, `options?`, `auto?`, `expired?`, `selectedOptionKind?`, 或旧 `raw` | Claude ACP：`resolvable:true` 时可手机 resolve；`summary` 为工具参数/命令/路径截断；`auto:true` 为自动放行审计（不可点）；`expired:true` 标记超时过期卡片；手机「批准」仅映射 `allow_once`（从不持久化 `allow_always`）；空 options 网关 fail-closed 不发手机；旧 CLI 仍可能仅含 `raw` |
 | `completed` | 可选 `source/exitCode` | 正常终止 |
 | `error` | `message`，可选 `exitCode/signal` | 执行失败 |
 

@@ -249,7 +249,7 @@ export class GatewayService {
 
     const patch: { nativeId?: string; status?: GatewaySession["status"]; error?: string | null } = {};
     if (event.nativeId) patch.nativeId = event.nativeId;
-    if (event.type === "approval") patch.status = "waiting_approval";
+    if (event.type === "approval" && event.payload.resolvable === true) patch.status = "waiting_approval";
     else if (event.type === "completed") patch.status = "completed";
     else if (event.type === "error") {
       patch.status = "failed";
