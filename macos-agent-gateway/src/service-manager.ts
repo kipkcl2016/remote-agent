@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { delimiter, dirname, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
+import { DEFAULT_REMOTE_AGENT_ALLOWED_ORIGINS } from "./config.js";
 
 export const serviceLabel = "com.remoteagent.gateway";
 
@@ -15,6 +16,7 @@ export type LaunchAgentOptions = {
   stderrPath: string;
   path: string;
   port?: number;
+  allowedOrigins?: string;
 };
 
 export function buildLaunchAgentPlist(options: LaunchAgentOptions): string {
@@ -25,7 +27,7 @@ export function buildLaunchAgentPlist(options: LaunchAgentOptions): string {
     REMOTE_AGENT_DATA_DIR: options.dataDir,
     REMOTE_AGENT_ROOTS: options.roots.join(delimiter),
     REMOTE_AGENT_ALLOWED_ORIGINS:
-      "http://localhost:4173,capacitor://localhost,https://localhost",
+      options.allowedOrigins ?? DEFAULT_REMOTE_AGENT_ALLOWED_ORIGINS,
   };
   const environmentXml = Object.entries(environment)
     .map(([key, value]) => `    <key>${escapeXml(key)}</key>\n    <string>${escapeXml(value)}</string>`)
@@ -124,6 +126,7 @@ function install(roots: string[]): void {
   cpSync(builtRuntimeDir, paths.runtimeDir, { recursive: true, force: true });
   copyFileSync(resolve(projectRoot, "package.json"), resolve(paths.dataDir, "package.json"));
   const entryPath = resolve(paths.runtimeDir, "index.js");
+  const allowedOrigins = process.env.REMOTE_AGENT_ALLOWED_ORIGINS?.trim();
   const plist = buildLaunchAgentPlist({
     nodePath: process.execPath,
     entryPath,
@@ -132,6 +135,7 @@ function install(roots: string[]): void {
     stdoutPath: resolve(paths.logDir, "gateway.log"),
     stderrPath: resolve(paths.logDir, "gateway.error.log"),
     path: process.env.PATH ?? "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
+    ...(allowedOrigins ? { allowedOrigins } : {}),
   });
   writeFileSync(paths.plistPath, plist, { encoding: "utf8", mode: 0o600 });
   chmodSync(paths.plistPath, 0o600);

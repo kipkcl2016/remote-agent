@@ -328,7 +328,7 @@ data: <完整 SessionEvent JSON>
 | `REMOTE_AGENT_PORT` | `17821` | 正整数，否则回退默认值 |
 | `REMOTE_AGENT_DATA_DIR` | `~/.remote-agent` | SQLite/服务数据目录 |
 | `REMOTE_AGENT_ROOTS` | 当前 cwd | macOS 用 `:` 分隔；新建/续接任务的执行授权边界，不影响历史可见性 |
-| `REMOTE_AGENT_ALLOWED_ORIGINS` | `http://localhost:4173,capacitor://localhost,https://localhost` | 逗号分隔精确 origin |
+| `REMOTE_AGENT_ALLOWED_ORIGINS` | `http://localhost:4173,http://127.0.0.1:4173,capacitor://localhost,https://localhost` | 逗号分隔精确 origin |
 | `REMOTE_AGENT_PAIRING_TTL_MS` | `300000` | 配对码 TTL，正整数 |
 | `REMOTE_AGENT_MAX_BODY_BYTES` | `1048576` | HTTP body 上限，正整数 |
 | `REMOTE_AGENT_CURSOR_HISTORY_DIR` | `~/.cursor/acp-sessions` | Cursor 旧历史 |

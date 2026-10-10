@@ -2,6 +2,10 @@ import { homedir } from "node:os";
 import { delimiter, resolve } from "node:path";
 import { getDefaultHistoryDirs } from "./platform.js";
 
+/** Comma-separated default for `REMOTE_AGENT_ALLOWED_ORIGINS` (Vite dev client on localhost and 127.0.0.1). */
+export const DEFAULT_REMOTE_AGENT_ALLOWED_ORIGINS =
+  "http://localhost:4173,http://127.0.0.1:4173,capacitor://localhost,https://localhost";
+
 export type GatewayConfig = {
   host: string;
   port: number;
@@ -28,10 +32,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig 
     .map((item) => item.trim())
     .filter(Boolean)
     .map((item) => resolve(item));
-  const origins = (
-    env.REMOTE_AGENT_ALLOWED_ORIGINS ??
-    "http://localhost:4173,capacitor://localhost,https://localhost"
-  )
+  const origins = (env.REMOTE_AGENT_ALLOWED_ORIGINS ?? DEFAULT_REMOTE_AGENT_ALLOWED_ORIGINS)
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
