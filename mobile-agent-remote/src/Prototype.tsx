@@ -71,7 +71,7 @@ import {
 
 type AgentName = "Cursor" | "Claude" | "Codex";
 type SessionStatus = "running" | "attention" | "done" | "cancelled" | "failed";
-type SessionView = "recent" | "projects" | "archived";
+type SessionView = "recent" | "projects";
 type SessionSyncState = "idle" | "loading" | "refreshing" | "fresh" | "stale" | "error";
 type PermissionMode = "plan" | "ask" | "auto" | "full";
 
@@ -353,7 +353,6 @@ export default function Prototype() {
   const [cacheSavedAt, setCacheSavedAt] = useState<string | null>(null);
   const [syncRequest, setSyncRequest] = useState(0);
   const [archiveRevision, setArchiveRevision] = useState(0);
-  const [archivedSessions, setArchivedSessions] = useState<AgentSession[]>([]);
   const [archiveEntries, setArchiveEntries] = useState<SessionArchiveEntry[]>([]);
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(() => new Set());
   const [filter, setFilter] = useState<(typeof filters)[number]>("全部");
@@ -529,28 +528,6 @@ export default function Prototype() {
 
   useEffect(() => {
     const url = normalizeGatewayUrl(gatewayUrl);
-    if (!url || !gatewayToken || !remoteOnline || sessionView !== "archived") {
-      if (sessionView !== "archived") setArchivedSessions([]);
-      return;
-    }
-    let active = true;
-    const loadArchived = async () => {
-      try {
-        const state = await loadRemoteState(url, gatewayToken, "archived");
-        if (!active) return;
-        setArchivedSessions(applySessionReadState(url, state.sessions, selectedSessionRef.current));
-      } catch {
-        if (active) setArchivedSessions([]);
-      }
-    };
-    void loadArchived();
-    return () => {
-      active = false;
-    };
-  }, [archiveRevision, gatewayToken, gatewayUrl, remoteOnline, sessionView]);
-
-  useEffect(() => {
-    const url = normalizeGatewayUrl(gatewayUrl);
     if (!url || !gatewayToken) {
       setArchiveEntries([]);
       return;
@@ -623,7 +600,7 @@ export default function Prototype() {
 
   const deferredQuery = useDeferredValue(query);
   const searchableSessions = useMemo(() => {
-    const source = sessionView === "archived" ? archivedSessions : sessions;
+    const source = sessions;
     const normalized = deferredQuery.trim().toLocaleLowerCase();
     return source.filter((session) => {
       const agentMatches = filter === "全部" || session.agent === filter;
@@ -634,13 +611,13 @@ export default function Prototype() {
           .includes(normalized);
       return agentMatches && textMatches;
     });
-  }, [archivedSessions, deferredQuery, filter, sessionView, sessions]);
+  }, [deferredQuery, filter, sessionView, sessions]);
 
   const visibleSessions = useMemo(() => {
-    const archiveMode = sessionView === "archived" ? "archived" : "active";
+    const archiveMode = "active";
     const filtered = filterSessionsByArchive(searchableSessions, archivedKeys, archiveMode);
     return limitSessionsPerProject(filtered, PROJECT_SESSION_LIMIT);
-  }, [archivedKeys, searchableSessions, sessionView]);
+  }, [archivedKeys, searchableSessions]);
 
   const displayedSessions = useMemo(
     () => visibleSessions.slice(0, SESSION_DISPLAY_LIMIT),
@@ -982,35 +959,9 @@ export default function Prototype() {
       if (selectedSessionRef.current && sessionIdentity(selectedSessionRef.current) === sessionIdentity(session)) {
         closeSessionDetail();
       }
-      setNotice("已存档：网页与本机 Agent 侧栏都会隐藏");
+      setNotice("已存档");
     } catch {
       setNotice("存档失败，请稍后重试");
-    }
-  }, [closeSessionDetail, gatewayToken, gatewayUrl]);
-
-  const restoreArchivedSession = useCallback(async (session: AgentSession) => {
-    const url = normalizeGatewayUrl(gatewayUrl);
-    if (!url || !gatewayToken) return;
-    try {
-      await gatewayRequest<{ restored: boolean }>(url, "/v1/session-archive/restore", {
-        method: "POST",
-        token: gatewayToken,
-        body: {
-          agent: agentToKind(session.agent),
-          id: session.id,
-          ...(session.nativeId ? { nativeId: session.nativeId } : {}),
-        },
-      });
-      setArchiveRevision((current) => current + 1);
-      setArchivedSessions((current) => current.filter((item) => sessionIdentity(item) !== sessionIdentity(session)));
-      if (selectedSessionRef.current && sessionIdentity(selectedSessionRef.current) === sessionIdentity(session)) {
-        closeSessionDetail();
-      }
-      setNotice("已恢复到会话列表");
-      setSessionView("recent");
-      setSyncRequest((current) => current + 1);
-    } catch {
-      setNotice("恢复失败，请稍后重试");
     }
   }, [closeSessionDetail, gatewayToken, gatewayUrl]);
 
@@ -1785,7 +1736,7 @@ export default function Prototype() {
           <section className="session-section" aria-labelledby="recent-title">
             <div className="section-heading">
               <h2 id="recent-title">
-                {sessionView === "archived" ? "已存档会话" : sessionView === "recent" ? "最近会话" : "项目会话"}
+                {sessionView === "recent" ? "最近会话" : "项目会话"}
               </h2>
               <div className="section-heading-actions">
                 <div className="session-view-switch" role="tablist" aria-label="会话浏览方式">
@@ -1808,16 +1759,6 @@ export default function Prototype() {
                     data-testid="view-projects"
                   >
                     项目
-                  </button>
-                  <button
-                    type="button"
-                    className={sessionView === "archived" ? "is-selected" : ""}
-                    onClick={() => setSessionView("archived")}
-                    role="tab"
-                    aria-selected={sessionView === "archived"}
-                    data-testid="view-archived"
-                  >
-                    已存档
                   </button>
                 </div>
                 <button
@@ -1918,7 +1859,7 @@ export default function Prototype() {
                   <strong>{query !== deferredQuery ? "…" : statusSummary.unread}</strong>
                 </span>
               </div>
-              {!selectedSession && remoteOnline && sessionView !== "archived" ? (
+              {!selectedSession && remoteOnline ? (
                 <button
                   className="new-session-button"
                   type="button"
@@ -1978,8 +1919,7 @@ export default function Prototype() {
                       key={`${session.source}-${session.agent}-${session.id}`}
                       session={session}
                       onOpen={openSession}
-                      onArchive={sessionView === "archived" ? undefined : archiveActiveSession}
-                      onRestore={sessionView === "archived" ? restoreArchivedSession : undefined}
+                      onArchive={archiveActiveSession}
                     />
                   ))
                 )
@@ -1988,26 +1928,20 @@ export default function Prototype() {
                   {sessionSyncState === "loading"
                     ? <TbRefresh className="loading-icon" aria-hidden="true" />
                     : remoteOnline
-                      ? sessionView === "archived"
-                        ? <TbArchive aria-hidden="true" />
-                        : <TbSearch aria-hidden="true" />
+                      ? <TbSearch aria-hidden="true" />
                       : <TbWifiOff aria-hidden="true" />}
                   <strong>
                     {sessionSyncState === "loading"
                       ? "正在加载会话"
                       : remoteOnline
-                        ? sessionView === "archived"
-                          ? "没有已存档会话"
-                          : "没有找到会话"
+                        ? "没有找到会话"
                         : "连接 Mac 后查看真实会话"}
                   </strong>
                   <span>
                     {sessionSyncState === "loading"
                       ? "首次连接需要从 Mac 读取 Cursor、Claude 和 Codex 历史。"
                       : remoteOnline
-                      ? sessionView === "archived"
-                        ? "已存档会话会从本机 Codex/Cursor 侧栏隐藏；可在这里恢复"
-                        : "换一个关键词或 Agent 试试"
+                      ? "换一个关键词或 Agent 试试"
                       : "不会再显示模拟数据；配对成功后自动同步 Cursor、Claude 和 Codex。"}
                   </span>
                   {!remoteOnline && sessionSyncState !== "loading" ? (
@@ -2193,17 +2127,6 @@ export default function Prototype() {
                 data-testid="session-cancel"
               >
                 {detailCancelling ? <TbRefresh aria-hidden="true" /> : "取消"}
-              </button>
-            ) : isSessionArchived(selectedSession, archivedKeys) ? (
-              <button
-                type="button"
-                className="session-detail-restore"
-                onClick={() => void restoreArchivedSession(selectedSession)}
-                aria-label="恢复会话到列表"
-                data-testid="session-detail-restore"
-              >
-                <TbArrowBackUp aria-hidden="true" />
-                恢复
               </button>
             ) : canArchiveSession(selectedSession.status) ? (
               <button
