@@ -540,13 +540,13 @@ test("[SESSION-007] project view groups agents, persists collapse state, and pre
   await expect(page.getByTestId("session-cursor-session")).toBeVisible();
   await expect(page.getByTestId("session-codex-session")).toBeVisible();
 
-  await page.getByTestId("project-toggle-project-auth").click();
+  await page.getByTestId("project-toggle-group:auth-service").click();
   await expect(page.getByTestId("session-cursor-session")).toHaveCount(0);
   await page.reload();
   await page.getByTestId("view-projects").click();
   await expect(page.getByTestId("session-cursor-session")).toHaveCount(0);
 
-  await page.getByTestId("project-toggle-project-auth").click();
+  await page.getByTestId("project-toggle-group:auth-service").click();
   await authProject.getByRole("button", { name: "在 auth-service 中发起新会话" }).click();
   await expect(page.getByTestId("bottom-sheet")).toBeVisible();
   await expect(page.getByTestId("working-directory")).toHaveValue("/Users/test/Projects/auth-service");
@@ -655,9 +655,11 @@ test("[SESSION-007] duplicate Codex project folders keep the real name in the pr
 
   await page.goto("/");
   await page.getByTestId("view-projects").click();
-  const projectHeaders = page.locator(".project-summary strong");
-  await expect(projectHeaders).toHaveCount(2);
-  await expect(projectHeaders).toHaveText(["remote-agent", "remote-agent"]);
+  await expect(page.getByTestId("project-group")).toHaveCount(1);
+  const mergedGroup = page.getByTestId("project-group").filter({ hasText: "remote-agent" });
+  await expect(mergedGroup.locator(".project-summary strong")).toHaveText(["remote-agent"]);
+  await expect(mergedGroup.getByTestId("session-codex-shared-a")).toBeVisible();
+  await expect(mergedGroup.getByTestId("session-codex-shared-b")).toBeVisible();
   await expect(page.locator(".project-summary small").first()).not.toContainText(/^workspace · remote-agent/);
 });
 

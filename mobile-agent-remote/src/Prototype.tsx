@@ -16,7 +16,7 @@ import {
 } from "react";
 import { App as CapacitorApp } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
-import { disambiguateProjectNames } from "./project-sessions.js";
+import { disambiguateProjectNames, groupSessionsByProjectDisplay } from "./project-sessions.js";
 import {
   TbArrowLeft,
   TbBrandOpenai,
@@ -98,6 +98,7 @@ type ProjectGroup = {
   id: string;
   name: string;
   hint?: string;
+  defaultCwd: string;
   sessions: AgentSession[];
 };
 
@@ -577,23 +578,10 @@ export default function Prototype() {
     [visibleSessions],
   );
 
-  const projectGroups = useMemo(() => {
-    const grouped = new Map<string, ProjectGroup>();
-    for (const session of visibleSessions) {
-      const existing = grouped.get(session.projectId);
-      if (existing) {
-        existing.sessions.push(session);
-        continue;
-      }
-      grouped.set(session.projectId, {
-        id: session.projectId,
-        name: session.project,
-        hint: session.projectHint,
-        sessions: [session],
-      });
-    }
-    return [...grouped.values()];
-  }, [visibleSessions]);
+  const projectGroups = useMemo(
+    () => groupSessionsByProjectDisplay(visibleSessions),
+    [visibleSessions],
+  );
 
   const knownProjects = useMemo(() => {
     const byId = new Map<string, { id: string; name: string; hint?: string; cwd: string }>();
@@ -749,7 +737,7 @@ export default function Prototype() {
   }, [gatewayUrl]);
 
   const createSessionInProject = useCallback((group: ProjectGroup) => {
-    const cwd = group.sessions.find((session) => session.cwd)?.cwd;
+    const cwd = group.defaultCwd || group.sessions.find((session) => session.cwd)?.cwd;
     if (!remoteOnline || !cwd) {
       setNotice("正在连接 Mac，请同步完成后再发起会话");
       return;

@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   applyProjectDisambiguation,
   disambiguateProjectNames,
+  groupSessionsByProjectDisplay,
 } from "../src/project-sessions.ts";
 
 test("duplicate real project names keep the folder title and move path context to a hint", () => {
@@ -73,6 +74,47 @@ test("duplicate Claude project folders keep the Git root name out of disambiguat
     assert.doesNotMatch(session.project ?? "", / · shared$/);
     assert.doesNotMatch(session.project ?? "", /^Users-/);
   }
+});
+
+test("same display name under different parent paths merge into one project group", () => {
+  const sessions = disambiguateProjectNames([
+    {
+      projectId: "codex-a",
+      project: "remote-agent",
+      cwd: "/Users/test/ws-a/workspace/remote-agent",
+    },
+    {
+      projectId: "codex-b",
+      project: "remote-agent",
+      cwd: "/Users/test/ws-b/workspace/remote-agent",
+    },
+  ]);
+
+  const groups = groupSessionsByProjectDisplay(sessions);
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0]?.name, "remote-agent");
+  assert.equal(groups[0]?.sessions.length, 2);
+  assert.equal(groups[0]?.id, "group:remote-agent");
+  assert.notEqual(groups[0]?.sessions[0]?.projectHint, groups[0]?.sessions[1]?.projectHint);
+});
+
+test("different project folder basenames stay in separate groups", () => {
+  const sessions = disambiguateProjectNames([
+    {
+      projectId: "project-a",
+      project: "auth-service",
+      cwd: "/Users/test/Projects/auth-service",
+    },
+    {
+      projectId: "project-b",
+      project: "mq-worker",
+      cwd: "/Users/test/Projects/mq-worker",
+    },
+  ]);
+
+  const groups = groupSessionsByProjectDisplay(sessions);
+  assert.equal(groups.length, 2);
+  assert.deepEqual(groups.map((group) => group.name).sort(), ["auth-service", "mq-worker"]);
 });
 
 test("duplicate Cursor workspaces keep the folder name, not workspace path glue", () => {
