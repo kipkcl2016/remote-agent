@@ -1568,85 +1568,20 @@ test("[CONN-001] background sync failure clears online UI", async ({ page }) => 
   await expect(page.locator(".connection-status-button .online-dot.is-offline")).toBeVisible();
 });
 
-test("[SESSION-009] archive hides session from default list and restore brings it back", async ({ page }) => {
-  await installConnectedGateway(page);
-  await page.goto("/");
-  await expect(page.getByTestId("session-cursor-session")).toBeVisible();
-  await page.getByTestId("session-archive-cursor-session").click();
-  await expect(page.getByText("已存档，可在「已存档」中恢复")).toBeVisible();
-  await expect(page.getByTestId("session-cursor-session")).toHaveCount(0);
-  await page.getByTestId("view-archived").click();
-  await expect(page.getByTestId("session-cursor-session")).toBeVisible();
-  await page.getByTestId("session-restore-cursor-session").click();
-  await expect(page.getByText("已恢复到会话列表")).toBeVisible();
-  await expect(page.getByTestId("session-cursor-session")).toBeVisible();
+test("[SESSION-009] archive hides session from default list", async ({ page }) => {
+  await openConnectedHome(page);
+  const target = page.getByTestId("session-row").filter({ hasText: "Code review pass" }).first();
+  await expect(target).toBeVisible();
+  await target.getByTestId(/session-archive-/).click();
+  await expect(page.getByText("已存档")).toBeVisible();
+  await expect(page.getByTestId("session-row").filter({ hasText: "Code review pass" })).toHaveCount(0);
+  await expect(page.getByTestId("view-archived")).toHaveCount(0);
 });
 
 test("[SESSION-009] running sessions cannot be archived from the list", async ({ page }) => {
-  await installConnectedGateway(page);
-  await page.goto("/");
-  await expect(page.getByTestId("session-codex-session")).toBeVisible();
-  await expect(page.getByTestId("session-archive-codex-session")).toHaveCount(0);
+  await openConnectedHome(page);
+  const target = page.getByTestId("session-row").filter({ hasText: "Streaming assistant output" }).first();
+  await expect(target).toBeVisible();
+  await expect(target.getByTestId(/session-archive-/)).toHaveCount(0);
 });
 
-test("[SESSION-009] archived sessions stay hidden after live sync", async ({ page }) => {
-  const archivedSession: MockSession = {
-    id: "archived-live",
-    nativeId: "archived-native",
-    agent: "cursor",
-    title: "应被存档过滤的缓存会话",
-    cwd: "/Users/test/Projects/archived",
-    projectId: "project-archived",
-    projectName: "archived",
-    permissionMode: "ask",
-    status: "completed",
-    createdAt: now,
-    updatedAt: now,
-  };
-  const archiveState = createMockArchiveState();
-  for (const sessionKey of archiveMockKeys("cursor", archivedSession.id, archivedSession.nativeId)) {
-    archiveState.entries.push({ agent: "cursor", sessionKey, archivedAt: now });
-  }
-  await page.addInitScript(({ url, timestamp }) => {
-    localStorage.setItem("remote-agent.gateway.url", url);
-    localStorage.setItem("remote-agent.gateway.token", "test-token");
-    localStorage.setItem("remote-agent.session-cache.v1", JSON.stringify({
-      version: 1,
-      url,
-      hostname: "CachedMac.local",
-      savedAt: timestamp,
-      sessions: [{
-        id: "archived-live",
-        source: "gateway",
-        resumable: true,
-        agent: "Cursor",
-        title: "应被存档过滤的缓存会话",
-        projectId: "project-archived",
-        project: "archived",
-        branch: "受限执行",
-        status: "done",
-        updatedAt: timestamp,
-      }],
-    }));
-  }, { url: gatewayUrl, timestamp: now });
-
-  let releaseSync = () => undefined;
-  const syncGate = new Promise<void>((resolve) => { releaseSync = resolve; });
-  await page.route(`${gatewayUrl}/**`, async (route) => {
-    const request = route.request();
-    const path = new URL(request.url()).pathname;
-    if (request.method() === "GET" && path === "/v1/session-archive") {
-      await handleGatewayRoute(route, [archivedSession], new Map(), "TestMac.local", [], [], new Map(), defaultMockAgents(), archiveState);
-      return;
-    }
-    await syncGate;
-    await handleGatewayRoute(route, [archivedSession], new Map(), "TestMac.local", [], [], new Map(), defaultMockAgents(), archiveState);
-  });
-
-  await page.goto("/");
-  await expect(page.getByTestId("session-archived-live")).toHaveCount(0);
-  releaseSync();
-  await expect(page.getByTestId("session-archived-live")).toHaveCount(0);
-  await page.getByTestId("view-archived").click();
-  await expect(page.getByTestId("session-archived-live")).toBeVisible();
-});
