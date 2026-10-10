@@ -187,6 +187,87 @@ test("native history shows disallowed directories as browse-only", async () => {
   }
 });
 
+test("native history reads Codex response_item chat messages", async () => {
+  const root = mkdtempSync(join(tmpdir(), "remote-agent-history-codex-response-item-"));
+  const dirs = {
+    cursor: join(root, "cursor"),
+    cursorChats: join(root, "cursor-chats"),
+    cursorComposerDb: join(root, "missing-state.vscdb"),
+    cursorTranscripts: join(root, "cursor-transcripts"),
+    claude: join(root, "claude"),
+    codex: join(root, "codex"),
+  };
+
+  try {
+    mkdirSync(join(dirs.codex, "2026", "10", "09"), { recursive: true });
+    writeFileSync(
+      join(
+        dirs.codex,
+        "2026",
+        "10",
+        "09",
+        "rollout-01a120b6-2264-73f0-9d52-af38afc928ef.jsonl",
+      ),
+      [
+        JSON.stringify({
+          timestamp: "2026-10-09T12:00:00.000Z",
+          type: "session_meta",
+          payload: { id: "01a120b6-2264-73f0-9d52-af38afc928ef", cwd: root },
+        }),
+        JSON.stringify({
+          type: "response_item",
+          timestamp: "2026-10-09T12:00:01.000Z",
+          payload: {
+            type: "message",
+            role: "developer",
+            content: [{ type: "input_text", text: "# AGENTS.md\n\nFollow repository rules." }],
+          },
+        }),
+        JSON.stringify({
+          type: "response_item",
+          timestamp: "2026-10-09T12:00:02.000Z",
+          payload: {
+            id: "user-turn-1",
+            type: "message",
+            role: "user",
+            content: [{ type: "input_text", text: "staging发布时，使用的是test的哪个版本" }],
+          },
+        }),
+        JSON.stringify({
+          type: "response_item",
+          timestamp: "2026-10-09T12:00:03.000Z",
+          payload: {
+            id: "assistant-turn-1",
+            type: "message",
+            role: "assistant",
+            content: [
+              { type: "output_text", text: "staging 使用的是 test 环境当前部署的版本。" },
+              { type: "function_call", name: "shell", arguments: "{}" },
+            ],
+          },
+        }),
+        "",
+      ].join("\n"),
+    );
+
+    const service = new NativeHistoryService(dirs, [root]);
+    const sessionId = "01a120b6-2264-73f0-9d52-af38afc928ef";
+    assert.equal((await service.get("codex", sessionId))?.title, "staging发布时，使用的是test的哪个版本");
+    assert.deepEqual(
+      (await service.messages("codex", sessionId))?.map((message) => ({
+        role: message.role,
+        text: message.text,
+      })),
+      [
+        { role: "user", text: "staging发布时，使用的是test的哪个版本" },
+        { role: "assistant", text: "staging 使用的是 test 环境当前部署的版本。" },
+      ],
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("native history ignores Codex archived sessions", async () => {
   const root = mkdtempSync(join(tmpdir(), "remote-agent-history-archived-"));
   const archivedRoot = join(root, "codex-archived");
