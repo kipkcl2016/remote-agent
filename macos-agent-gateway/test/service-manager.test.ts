@@ -25,6 +25,7 @@ test("launchd plist pins executable paths and escapes user values", () => {
   assert.match(plist, /REMOTE_AGENT_HOST/);
   assert.match(plist, /<string>0\.0\.0\.0<\/string>/);
   assert.match(plist, /capacitor:\/\/localhost/);
+  assert.match(plist, /http:\/\/127\.0\.0\.1:4173/);
   assert.doesNotMatch(plist, /<string>\/opt\/node & tools/);
 });
 
