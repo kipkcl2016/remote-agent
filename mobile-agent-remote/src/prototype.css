@@ -238,9 +238,9 @@
 
 .session-view-switch {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 3px;
-  width: 168px;
+  width: 112px;
   height: 34px;
   margin: 0;
   padding: 3px;
@@ -604,17 +604,6 @@
   height: 25px;
 }
 
-.session-row-shell {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: stretch;
-  border-bottom: 1px solid var(--line);
-}
-
-.session-row-shell.is-unread .session-copy strong {
-  font-weight: 700;
-}
-
 .session-row {
   position: relative;
   display: grid;
@@ -625,6 +614,7 @@
   min-height: 70px;
   padding: 7px 1px;
   border: 0;
+  border-bottom: 1px solid var(--line);
   background: transparent;
   color: inherit;
   text-align: left;
@@ -636,37 +626,6 @@
 
 .session-row:active {
   background: rgba(255, 255, 255, 0.025);
-}
-
-.session-row-side-action {
-  display: grid;
-  place-items: center;
-  width: 44px;
-  margin: 0 2px 0 0;
-  padding: 0;
-  border: 0;
-  border-radius: 12px;
-  background: transparent;
-  color: #8ea0c4;
-  touch-action: manipulation;
-}
-
-.session-row-side-action svg {
-  width: 20px;
-  height: 20px;
-}
-
-.session-row-side-action.is-archive:active {
-  color: #b8c4dc;
-  background: rgba(255, 255, 255, 0.04);
-}
-
-.session-row-side-action.is-restore {
-  color: #7ec8ff;
-}
-
-.session-row-side-action.is-restore:active {
-  background: rgba(126, 200, 255, 0.1);
 }
 
 .agent-icon {
@@ -1007,34 +966,6 @@
 .session-detail-cancel svg {
   width: 18px;
   height: 18px;
-}
-
-.session-detail-archive,
-.session-detail-restore {
-  display: inline-flex;
-  flex: 0 0 auto;
-  gap: 4px;
-  align-items: center;
-  min-width: 52px;
-  padding: 8px 10px;
-  border-radius: 999px;
-  border: 1px solid rgba(142, 160, 196, 0.35);
-  background: rgba(142, 160, 196, 0.1);
-  color: #b8c4dc;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.session-detail-restore {
-  border-color: rgba(126, 200, 255, 0.45);
-  background: rgba(126, 200, 255, 0.12);
-  color: #7ec8ff;
-}
-
-.session-detail-archive svg,
-.session-detail-restore svg {
-  width: 16px;
-  height: 16px;
 }
 
 .revoke-confirm {
