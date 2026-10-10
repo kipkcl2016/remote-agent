@@ -218,12 +218,15 @@ type PairedDevice = {
 | `GET /v1/agents` | 是 | 200 | — | `AgentAvailability[]` |
 | `GET /v1/agents/usage` | 是 | 200 | — | `AgentUsage[]` |
 | `GET /v1/config` | 是 | 200 | — | `{hostname, allowedRoots}` |
-| `GET /v1/history` | 是 | 200 | query `agent?`, `limit?`, `perProjectLimit?` | `NativeHistorySession[]` |
+| `GET /v1/history` | 是 | 200 | query `agent?`, `limit?`, `perProjectLimit?`, `visibility?` | `NativeHistorySession[]` |
 | `GET /v1/history/:agent/:id/messages` | 是 | 200 | query `limit?` | `NativeHistoryMessage[]` |
 | `GET /v1/history/:agent/:id/snapshot` | 是 | 200 | query `limit?` | `{ session: NativeHistorySession, messages: NativeHistoryMessage[] }` |
 | `POST /v1/history/:agent/:id/resume` | 是 | 202 | `{prompt, permissionMode}` | `GatewaySession` |
 | `POST /v1/history/:agent/:id/files/read` | 是 | 200 | `{path}` | 二进制 `SessionFile`；只允许可续接历史 cwd 内文件 |
-| `GET /v1/sessions` | 是 | 200 | query `agent?`, `limit?` | `GatewaySession[]` |
+| `GET /v1/session-archive` | 是 | 200 | — | `SessionArchiveEntry[]` |
+| `POST /v1/session-archive` | 是 | 200 | `{agent, id, nativeId?}` | `SessionArchiveEntry[]` |
+| `POST /v1/session-archive/restore` | 是 | 200 | `{agent, id, nativeId?}` | `{restored: true}` |
+| `GET /v1/sessions` | 是 | 200 | query `agent?`, `limit?`, `visibility?` | `GatewaySession[]` |
 | `POST /v1/sessions` | 是 | 202 | `{agent, prompt, cwd, permissionMode}` | `GatewaySession` |
 | `GET /v1/sessions/:id` | 是 | 200 | — | `GatewaySession` |
 | `GET /v1/sessions/:id/events` | 是 | 200 | query `after?` 或 `Last-Event-ID` | JSON `SessionEvent[]` 或 SSE |
@@ -265,7 +268,7 @@ type PairedDevice = {
 | 401 | token 缺失、无效或已撤销；配对码无效/过期也返回 401 |
 | 403 | 非回环生成配对码、Origin 不在 allowlist、文件越出会话 cwd、只读原生历史读取文件 |
 | 404 | 路由、设备、会话、原生历史或文件不存在 |
-| 409 | 原生历史只读、不能续接 |
+| 409 | 原生历史只读、不能续接；`running`/`queued`/`waiting_approval` 会话不能存档 |
 | 413 | body 或会话文件超过上限 |
 | 429 | 配对确认尝试过多 |
 | 500 | cwd 校验、Agent 缺失/启动、会话状态等当前未分类错误；不得泄露敏感上下文 |
@@ -305,6 +308,8 @@ data: <完整 SessionEvent JSON>
 - `devices` 只保存 `token_hash`，不保存明文 token。
 - `sessions` 保存网关/原生 ID、Agent、cwd、权限、状态、时间和可选错误。
 - `events` 通过 foreign key 关联 session；删除 session 时级联删除事件，但当前没有公开删除会话 API。
+- `session_archive(device_id, agent, session_key, archived_at)` 主键 `(device_id, agent, session_key)`，`device_id` 外键级联删除。按配对设备保存“软隐藏”偏好，不删除 `sessions`/`events` 或桌面原生历史。`session_key = nativeId ?? id`；存档时同时写入 gateway `id` 与 `nativeId` 别名键（若二者不同）。
+- 移动端会话存档（SESSION-009）通过上述网关 API 实现，按 Bearer 设备隔离；`GET /v1/sessions` 与 `GET /v1/history` 支持 `visibility=active|archived`（默认 `active`）。
 - 配对码只保存在进程内存；网关重启后失效。
 - 活动子进程只保存在内存；网关重启不会自动恢复“运行中”任务。数据库中的旧状态可能仍为 running，这是当前恢复限制，不能在 UI 中解释为进程仍真实存活。
 
