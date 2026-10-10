@@ -1,5 +1,6 @@
-import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { basename, join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
+import { homedir } from "node:os";
+import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { NativeHistoryMessage, NativeHistorySession } from "./types.js";
 
@@ -15,7 +16,58 @@ type WorkbuddySessionRow = {
   deleted_at: number | null;
 };
 
-/** List WorkBuddy sessions from ~/.workbuddy/workbuddy.db (non-deleted). */
+/** WorkBuddy playground / no-project sessions live under ~/WorkBuddy; share one temp cwd. */
+export const WORKBUDDY_TEMP_DIRNAME = "_temp";
+
+/** Dated playground folders created by WorkBuddy desktop: YYYY-MM-DD-HH-MM-SS */
+const WORKBUDDY_DATED_DIR = /^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}$/;
+
+export function defaultWorkbuddyHome(): string {
+  return join(homedir(), "WorkBuddy");
+}
+
+export function workbuddyTempDir(workbuddyHome = defaultWorkbuddyHome()): string {
+  return join(resolve(workbuddyHome), WORKBUDDY_TEMP_DIRNAME);
+}
+
+/**
+ * True when cwd is WorkBuddy home, a desktop dated playground folder, or the shared _temp dir.
+ * Named project folders under ~/WorkBuddy (e.g. 房子) are not ephemeral.
+ */
+export function isWorkbuddyEphemeralCwd(
+  cwd: string,
+  workbuddyHome = defaultWorkbuddyHome(),
+): boolean {
+  const resolved = resolve(cwd.trim());
+  const home = resolve(workbuddyHome);
+  if (resolved === home) return true;
+  const rel = relative(home, resolved);
+  if (!rel || rel.startsWith("..") || isAbsolute(rel)) return false;
+  const parts = rel.split(/[/\\]/).filter(Boolean);
+  if (parts.length === 0) return true;
+  if (parts[0] === WORKBUDDY_TEMP_DIRNAME) return true;
+  return parts.length === 1 && WORKBUDDY_DATED_DIR.test(parts[0]!);
+}
+
+/**
+ * For WorkBuddy *create* (no native resume): map ephemeral/no-project cwd to shared _temp.
+ * Ensures the directory exists. Real project paths are unchanged.
+ */
+export function resolveWorkbuddyCreateCwd(
+  cwd: string,
+  workbuddyHome = defaultWorkbuddyHome(),
+): string {
+  if (!isWorkbuddyEphemeralCwd(cwd, workbuddyHome)) return cwd.trim();
+  const temp = workbuddyTempDir(workbuddyHome);
+  mkdirSync(temp, { recursive: true });
+  return temp;
+}
+
+/**
+ * List WorkBuddy sessions from ~/.workbuddy/workbuddy.db.
+ * Excludes soft-deleted rows (deleted_at > 0) and desktop-archived rows (status = archived).
+ * WorkBuddy uses deleted_at = -1 as “not deleted” for some cloud rows.
+ */
 export function scanWorkbuddySessions(dbPath: string): NativeHistorySession[] {
   if (!dbPath || !existsSync(dbPath)) return [];
   let database: DatabaseSync | undefined;
@@ -25,7 +77,8 @@ export function scanWorkbuddySessions(dbPath: string): NativeHistorySession[] {
       .prepare(
         `SELECT id, cwd, title, custom_title, status, created_at, updated_at, last_activity_at, deleted_at
          FROM sessions
-         WHERE deleted_at IS NULL
+         WHERE (deleted_at IS NULL OR deleted_at = -1)
+           AND lower(COALESCE(status, '')) != 'archived'
          ORDER BY COALESCE(last_activity_at, updated_at, created_at) DESC
          LIMIT 2000`,
       )

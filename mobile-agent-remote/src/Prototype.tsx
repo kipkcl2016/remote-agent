@@ -394,6 +394,8 @@ export default function Prototype() {
   const [pairedDevices, setPairedDevices] = useState<PairedDeviceApi[]>([]);
   const [agentUsages, setAgentUsages] = useState<AgentUsageApi[] | null>(null);
   const [agentAvailability, setAgentAvailability] = useState<AgentAvailabilityApi[] | null>(null);
+  /** null = show channel picker before loading any agent sessions */
+  const [selectedChannel, setSelectedChannel] = useState<AgentName | null>(null);
   const [remoteOnline, setRemoteOnline] = useState(false);
   const [connectionBusy, setConnectionBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -466,53 +468,75 @@ export default function Prototype() {
     if (!url || !gatewayToken) {
       setRemoteOnline(false);
       setAgentAvailability(null);
+      setSelectedChannel(null);
       setSessions([]);
       setSessionSyncState("idle");
       setCacheSavedAt(null);
       return;
     }
-    const cached = readSessionCache(url);
+    const channel = selectedChannel;
+    const cached = channel
+      ? readSessionCache(url)?.sessions.filter((session) => session.agent === channel)
+      : undefined;
+    const cachedMeta = readSessionCache(url);
     setRemoteOnline(false);
-    setAgentAvailability(null);
-    if (cached) {
+    if (channel && cached && cached.length && cachedMeta) {
       setSessions(applySessionReadState(
         url,
-        deduplicateSessions(cached.sessions),
+        deduplicateSessions(cached),
         selectedSessionRef.current,
       ));
-      setDeviceName(cached.hostname || "Mac");
-      setCacheSavedAt(cached.savedAt);
+      setDeviceName(cachedMeta.hostname || "Mac");
+      setCacheSavedAt(cachedMeta.savedAt);
       setSessionSyncState("refreshing");
     } else {
       setSessions([]);
       setCacheSavedAt(null);
-      setSessionSyncState("loading");
+      setSessionSyncState(channel ? "loading" : "idle");
     }
     let active = true;
     const synchronize = async (initial: boolean) => {
       if (initial) setConnectionBusy(true);
       try {
-        const state = await loadRemoteState(url, gatewayToken, "active");
+        const state = await loadRemoteState(
+          url,
+          gatewayToken,
+          "active",
+          channel ? agentToKind(channel) : undefined,
+          { includeSessions: Boolean(channel) },
+        );
         if (!active) return;
-        const sessionsWithReadState = applySessionReadState(url, state.sessions, selectedSessionRef.current);
-        setSessions((current) => sameSessions(current, sessionsWithReadState) ? current : sessionsWithReadState);
         setDeviceName(state.hostname);
         setPairedDevices((current) => samePairedDevices(current, state.devices) ? current : state.devices);
         setWorkingDirectory((current) => current || state.allowedRoots[0] || "");
         setAgentAvailability(state.agents);
         setRemoteOnline(true);
+        if (!channel) {
+          setSessions([]);
+          setSessionSyncState("idle");
+          return;
+        }
+        const sessionsWithReadState = applySessionReadState(url, state.sessions, selectedSessionRef.current);
+        setSessions((current) => sameSessions(current, sessionsWithReadState) ? current : sessionsWithReadState);
         const savedAt = new Date().toISOString();
-        writeSessionCache(url, state.hostname, savedAt, sessionsWithReadState);
+        const previous = readSessionCache(url);
+        const merged = deduplicateSessions([
+          ...(previous?.sessions.filter((session) => session.agent !== channel) ?? []),
+          ...sessionsWithReadState,
+        ]);
+        writeSessionCache(url, state.hostname, savedAt, merged);
         setCacheSavedAt(savedAt);
         setSessionSyncState("fresh");
       } catch {
         if (!active) return;
         setRemoteOnline(false);
-        setAgentAvailability(null);
+        if (!channel) setAgentAvailability(null);
         setSessionSyncState((current) => (
-          cached || current === "fresh" || current === "stale" || current === "refreshing"
+          (cached && cached.length) || current === "fresh" || current === "stale" || current === "refreshing"
             ? "stale"
-            : "error"
+            : channel
+              ? "error"
+              : "idle"
         ));
       } finally {
         if (active && initial) setConnectionBusy(false);
@@ -524,7 +548,7 @@ export default function Prototype() {
       active = false;
       window.clearInterval(timer);
     };
-  }, [gatewayToken, gatewayUrl, syncRequest]);
+  }, [gatewayToken, gatewayUrl, selectedChannel, syncRequest]);
 
   useEffect(() => {
     const url = normalizeGatewayUrl(gatewayUrl);
@@ -730,24 +754,55 @@ export default function Prototype() {
     return null;
   }, [isAgentInstalled]);
 
+  const installedChannels = useMemo(() => {
+    return (["Cursor", "Claude", "Codex", "WorkBuddy"] as AgentName[]).filter((agent) => (
+      isAgentInstalled(agent)
+    ));
+  }, [isAgentInstalled]);
+
   useEffect(() => {
-    if (filter === "全部" || isAgentInstalled(filter)) return;
+    if (!selectedChannel) return;
+    if (isAgentInstalled(selectedChannel)) {
+      if (filter !== selectedChannel) setFilter(selectedChannel);
+      return;
+    }
+    setSelectedChannel(null);
     setFilter("全部");
-  }, [filter, isAgentInstalled]);
+    setSessions([]);
+  }, [filter, isAgentInstalled, selectedChannel]);
+
+  const selectChannel = (agent: AgentName) => {
+    keyboard.hide();
+    if (!isAgentInstalled(agent)) {
+      setNotice(`${agent} 未在 Mac 上安装`);
+      return;
+    }
+    setSelectedChannel(agent);
+    setFilter(agent);
+    setDraftAgent(agent);
+    setSelectedSession(null);
+    setSearchOpen(false);
+    setQuery("");
+    setSessionSyncState("loading");
+  };
 
   const selectAgentFilter = (nextFilter: (typeof filters)[number]) => {
     keyboard.hide();
-    if (nextFilter !== "全部" && !isAgentInstalled(nextFilter)) {
-      setNotice(`${nextFilter} 未在 Mac 上安装`);
+    if (nextFilter === "全部") {
+      setSelectedChannel(null);
+      setFilter("全部");
+      setSessions([]);
+      setSessionSyncState("idle");
+      setSelectedSession(null);
       return;
     }
-    setFilter(nextFilter);
-    if (nextFilter !== "全部") setDraftAgent(nextFilter);
+    selectChannel(nextFilter);
   };
 
   const openNewSession = () => {
     keyboard.hide();
-    if (filter !== "全部" && isAgentInstalled(filter)) setDraftAgent(filter);
+    if (selectedChannel && isAgentInstalled(selectedChannel)) setDraftAgent(selectedChannel);
+    else if (filter !== "全部" && isAgentInstalled(filter)) setDraftAgent(filter);
     else {
       const installed = firstInstalledAgent();
       if (installed) setDraftAgent(installed);
@@ -768,10 +823,12 @@ export default function Prototype() {
     setPairedDevices([]);
     setAgentUsages(null);
     setAgentAvailability(null);
+    setSelectedChannel(null);
+    setFilter("全部");
     setWorkingDirectory("");
     setRemoteOnline(false);
     setSessions([]);
-    setSessionSyncState(selected ? "loading" : "idle");
+    setSessionSyncState(selected ? "idle" : "idle");
   }, []);
 
   const toggleProject = useCallback((projectId: string) => {
@@ -791,11 +848,16 @@ export default function Prototype() {
       setNotice("正在连接 Mac，请同步完成后再发起会话");
       return;
     }
+    if (!selectedChannel) {
+      setNotice("请先选择 Agent 通道");
+      return;
+    }
     keyboard.hide();
     setWorkingDirectory(cwd);
+    setDraftAgent(selectedChannel);
     setDraftPermissionMode(alwaysConfirm ? "ask" : "auto");
     setNewSessionOpen(true);
-  }, [alwaysConfirm, keyboard, remoteOnline]);
+  }, [alwaysConfirm, keyboard, remoteOnline, selectedChannel]);
 
   const releaseFilePreviewUrl = useCallback(() => {
     if (!filePreviewObjectUrlRef.current) return;
@@ -1736,42 +1798,61 @@ export default function Prototype() {
           <section className="session-section" aria-labelledby="recent-title">
             <div className="section-heading">
               <h2 id="recent-title">
-                {sessionView === "recent" ? "最近会话" : "项目会话"}
+                {!selectedChannel
+                  ? "选择通道"
+                  : sessionView === "recent"
+                    ? `${selectedChannel} · 最近`
+                    : `${selectedChannel} · 项目`}
               </h2>
               <div className="section-heading-actions">
-                <div className="session-view-switch" role="tablist" aria-label="会话浏览方式">
+                {selectedChannel ? (
                   <button
                     type="button"
-                    className={sessionView === "recent" ? "is-selected" : ""}
-                    onClick={() => setSessionView("recent")}
-                    role="tab"
-                    aria-selected={sessionView === "recent"}
-                    data-testid="view-recent"
+                    className="channel-switch-button"
+                    onClick={() => selectAgentFilter("全部")}
+                    data-testid="switch-channel"
+                    aria-label="返回通道选择"
                   >
-                    最近
+                    切换通道
                   </button>
-                  <button
-                    type="button"
-                    className={sessionView === "projects" ? "is-selected" : ""}
-                    onClick={() => setSessionView("projects")}
-                    role="tab"
-                    aria-selected={sessionView === "projects"}
-                    data-testid="view-projects"
-                  >
-                    项目
-                  </button>
-                </div>
-                <button
-                  className={`search-trigger ${searchOpen ? "is-active" : ""}`}
-                  type="button"
-                  onClick={toggleSearch}
-                  aria-expanded={searchOpen}
-                  aria-label={searchOpen ? "关闭历史搜索" : "搜索历史会话"}
-                  data-testid="search-toggle"
-                >
-                  {searchOpen ? <TbX aria-hidden="true" /> : <TbSearch aria-hidden="true" />}
-                  <span>{searchOpen ? "关闭" : "搜索历史会话"}</span>
-                </button>
+                ) : null}
+                {selectedChannel ? (
+                  <>
+                    <div className="session-view-switch" role="tablist" aria-label="会话浏览方式">
+                      <button
+                        type="button"
+                        className={sessionView === "recent" ? "is-selected" : ""}
+                        onClick={() => setSessionView("recent")}
+                        role="tab"
+                        aria-selected={sessionView === "recent"}
+                        data-testid="view-recent"
+                      >
+                        最近
+                      </button>
+                      <button
+                        type="button"
+                        className={sessionView === "projects" ? "is-selected" : ""}
+                        onClick={() => setSessionView("projects")}
+                        role="tab"
+                        aria-selected={sessionView === "projects"}
+                        data-testid="view-projects"
+                      >
+                        项目
+                      </button>
+                    </div>
+                    <button
+                      className={`search-trigger ${searchOpen ? "is-active" : ""}`}
+                      type="button"
+                      onClick={toggleSearch}
+                      aria-expanded={searchOpen}
+                      aria-label={searchOpen ? "关闭历史搜索" : "搜索历史会话"}
+                      data-testid="search-toggle"
+                    >
+                      {searchOpen ? <TbX aria-hidden="true" /> : <TbSearch aria-hidden="true" />}
+                      <span>{searchOpen ? "关闭" : "搜索历史会话"}</span>
+                    </button>
+                  </>
+                ) : null}
               </div>
             </div>
 
@@ -1800,53 +1881,49 @@ export default function Prototype() {
               </div>
             ) : null}
 
-            <div
-              className="agent-filters"
-              aria-label="按 Agent 筛选会话"
-              role="tablist"
-            >
-              {filters.map((item) => {
-                const agentInstalled = item === "全部" || isAgentInstalled(item);
-                const installCaption = item === "全部" ? null : agentInstallCaption(item);
-                return (
-                  <button
-                    key={item}
-                    type="button"
-                    className={`${filter === item ? "is-selected" : ""}${agentInstalled ? "" : " is-disabled"}`}
-                    onClick={() => selectAgentFilter(item)}
-                    aria-pressed={filter === item}
-                    aria-selected={filter === item}
-                    aria-disabled={!agentInstalled}
-                    disabled={!agentInstalled}
-                    role="tab"
-                    data-testid={`filter-${item}`}
-                  >
-                    <span className="agent-filter-copy">
-                      <span>{item}</span>
-                      {item === "全部" ? null : (
-                        <>
-                          <AgentUsageStatus
-                            agent={item}
-                            usage={agentUsages?.find((usage) => kindToAgent(usage.agent) === item) ?? null}
-                            connected={remoteOnline}
-                          />
-                          {installCaption ? (
-                            <span
-                              className={`agent-filter-install${agentInstalled ? "" : " is-missing"}`}
-                              data-testid={`agent-install-${item}`}
-                            >
-                              {installCaption}
-                            </span>
-                          ) : null}
-                        </>
-                      )}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+            {selectedChannel ? (
+              <div
+                className="agent-filters channel-filters"
+                style={{ gridTemplateColumns: `repeat(${Math.max(installedChannels.length, 1)}, 1fr)` }}
+                aria-label="当前 Agent 通道"
+                role="tablist"
+              >
+                {installedChannels.map((item) => {
+                  const installCaption = agentInstallCaption(item);
+                  return (
+                    <button
+                      key={item}
+                      type="button"
+                      className={selectedChannel === item ? "is-selected" : ""}
+                      onClick={() => selectChannel(item)}
+                      aria-pressed={selectedChannel === item}
+                      aria-selected={selectedChannel === item}
+                      role="tab"
+                      data-testid={`filter-${item}`}
+                    >
+                      <span className="agent-filter-copy">
+                        <span>{item}</span>
+                        <AgentUsageStatus
+                          agent={item}
+                          usage={agentUsages?.find((usage) => kindToAgent(usage.agent) === item) ?? null}
+                          connected={remoteOnline}
+                        />
+                        {installCaption ? (
+                          <span
+                            className="agent-filter-install"
+                            data-testid={`agent-install-${item}`}
+                          >
+                            {installCaption}
+                          </span>
+                        ) : null}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
 
-            <div className="filter-feedback" data-testid="filter-feedback">
+            {selectedChannel ? <div className="filter-feedback" data-testid="filter-feedback">
               <div className="status-summary-group" role="status" aria-live="polite">
                 <span className="status-summary-item is-running">
                   <i aria-hidden="true" />
@@ -1859,12 +1936,12 @@ export default function Prototype() {
                   <strong>{query !== deferredQuery ? "…" : statusSummary.unread}</strong>
                 </span>
               </div>
-              {!selectedSession && remoteOnline ? (
+              {!selectedSession && remoteOnline && selectedChannel ? (
                 <button
                   className="new-session-button"
                   type="button"
                   onClick={openNewSession}
-                  aria-label={filter === "全部" ? "发起新会话" : `发起 ${filter} 新会话`}
+                  aria-label={selectedChannel ? `发起 ${selectedChannel} 新会话` : "发起新会话"}
                   data-testid="new-session"
                   data-scroll-drag="ignore"
                 >
@@ -1872,9 +1949,9 @@ export default function Prototype() {
                   新会话
                 </button>
               ) : null}
-            </div>
+            </div> : null}
 
-            {sessionSyncState === "loading" || sessionSyncState === "refreshing" ? (
+            {selectedChannel && (sessionSyncState === "loading" || sessionSyncState === "refreshing") ? (
               <div className="session-sync-state is-loading" role="status" data-testid="session-sync-state">
                 <i aria-hidden="true" />
                 <span>
@@ -1883,7 +1960,7 @@ export default function Prototype() {
                     : "正在从 Mac 加载会话…"}
                 </span>
               </div>
-            ) : sessionSyncState === "stale" || sessionSyncState === "error" ? (
+            ) : selectedChannel && (sessionSyncState === "stale" || sessionSyncState === "error") ? (
               <div className="session-sync-state is-stale" role="status" data-testid="session-sync-state">
                 <span>
                   {sessionSyncState === "stale"
@@ -1897,7 +1974,60 @@ export default function Prototype() {
             ) : null}
 
             <div className="session-list" data-testid="session-list">
-              {visibleSessions.length ? (
+              {remoteOnline && !selectedChannel ? (
+                <div className="channel-picker" role="group" aria-label="选择 Agent 通道" data-testid="channel-picker">
+                  <div className="channel-picker-copy">
+                    <strong>选择通道</strong>
+                    <span>先挑选本机已安装的 Agent，再加载对应会话历史。</span>
+                  </div>
+                  {connectionBusy && !agentAvailability ? (
+                    <div className="channel-picker-loading" role="status">
+                      <TbRefresh className="loading-icon" aria-hidden="true" />
+                      <span>正在读取 Mac 上已安装的 Agent…</span>
+                    </div>
+                  ) : installedChannels.length ? (
+                    <div className="channel-picker-grid">
+                      {installedChannels.map((agent) => {
+                        const caption = agentInstallCaption(agent);
+                        return (
+                          <button
+                            key={agent}
+                            type="button"
+                            className="channel-picker-card"
+                            onClick={() => selectChannel(agent)}
+                            data-testid={`channel-${agent}`}
+                          >
+                            <AgentIcon agent={agent} framed />
+                            <span className="channel-picker-name">{agent}</span>
+                            {caption ? <span className="channel-picker-meta">{caption}</span> : null}
+                            <AgentUsageStatus
+                              agent={agent}
+                              usage={agentUsages?.find((usage) => kindToAgent(usage.agent) === agent) ?? null}
+                              connected={remoteOnline}
+                            />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="empty-state" role="status">
+                      <strong>未检测到已安装的 Agent</strong>
+                      <span>请在 Mac 上安装 Cursor、Claude、Codex 或 WorkBuddy 后重试。</span>
+                      <button type="button" onClick={() => setSyncRequest((current) => current + 1)}>
+                        <TbRefresh aria-hidden="true" />重新检测
+                      </button>
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    className="channel-picker-switch"
+                    onClick={() => setDeviceOpen(true)}
+                    data-testid="channel-picker-device"
+                  >
+                    管理 Mac 连接
+                  </button>
+                </div>
+              ) : visibleSessions.length ? (
                 sessionView === "projects" ? (
                   <div className="project-list" data-testid="project-list">
                     {projectGroups.map((group) => (
@@ -1905,7 +2035,7 @@ export default function Prototype() {
                         key={group.id}
                         group={group}
                         expanded={Boolean(deferredQuery.trim()) || expandedProjects.has(group.id)}
-                        canCreate={remoteOnline && !searchOpen}
+                        canCreate={remoteOnline && !searchOpen && Boolean(selectedChannel)}
                         onToggle={toggleProject}
                         onCreate={createSessionInProject}
                         onOpen={openSession}
@@ -1939,11 +2069,16 @@ export default function Prototype() {
                   </strong>
                   <span>
                     {sessionSyncState === "loading"
-                      ? "首次连接需要从 Mac 读取 Cursor、Claude 和 Codex 历史。"
+                      ? `正在从 Mac 读取 ${selectedChannel ?? "Agent"} 历史…`
                       : remoteOnline
-                      ? "换一个关键词或 Agent 试试"
-                      : "不会再显示模拟数据；配对成功后自动同步 Cursor、Claude 和 Codex。"}
+                      ? "换一个关键词试试，或切换其他通道"
+                      : "配对成功后先选择通道，再同步对应 Agent 的会话。"}
                   </span>
+                  {remoteOnline && selectedChannel ? (
+                    <button type="button" onClick={() => selectAgentFilter("全部")} data-testid="back-to-channels">
+                      返回通道选择
+                    </button>
+                  ) : null}
                   {!remoteOnline && sessionSyncState !== "loading" ? (
                     <button type="button" onClick={() => setDeviceOpen(true)} data-testid="empty-connect">
                       连接 Mac
@@ -3081,6 +3216,8 @@ async function loadRemoteState(
   url: string,
   token: string,
   visibility: "active" | "archived" = "active",
+  agent?: AgentKindApi,
+  options: { includeSessions?: boolean } = {},
 ): Promise<{
   sessions: AgentSession[];
   hostname: string;
@@ -3089,18 +3226,37 @@ async function loadRemoteState(
   agents: AgentAvailabilityApi[];
   archiveEntries: SessionArchiveEntry[];
 }> {
+  const includeSessions = options.includeSessions !== false;
   const visibilityQuery = `visibility=${visibility}`;
-  const [gatewaySessions, nativeHistory, config, devices, agents, archiveEntries] = await Promise.all([
-    gatewayRequest<GatewaySessionApi[]>(url, `/v1/sessions?limit=200&${visibilityQuery}`, { token }),
-    gatewayRequest<NativeHistoryApi[]>(
-      url,
-      `/v1/history?limit=2000&perProjectLimit=20&${visibilityQuery}`,
-      { token },
-    ),
+  const agentQuery = agent ? `&agent=${encodeURIComponent(agent)}` : "";
+  const bootstrap = await Promise.all([
     gatewayRequest<{ hostname: string; allowedRoots: string[] }>(url, "/v1/config", { token }),
     gatewayRequest<PairedDeviceApi[]>(url, "/v1/devices", { token }),
     gatewayRequest<unknown>(url, "/v1/agents", { token }),
     gatewayRequest<SessionArchiveEntry[]>(url, "/v1/session-archive", { token }),
+  ]);
+  const [config, devices, agents, archiveEntries] = bootstrap;
+  if (!includeSessions) {
+    return {
+      sessions: [],
+      hostname: config.hostname,
+      allowedRoots: config.allowedRoots,
+      devices,
+      agents: normalizeAgentAvailability(agents),
+      archiveEntries,
+    };
+  }
+  const [gatewaySessions, nativeHistory] = await Promise.all([
+    gatewayRequest<GatewaySessionApi[]>(
+      url,
+      `/v1/sessions?limit=200&${visibilityQuery}${agentQuery}`,
+      { token },
+    ),
+    gatewayRequest<NativeHistoryApi[]>(
+      url,
+      `/v1/history?limit=2000&perProjectLimit=20&${visibilityQuery}${agentQuery}`,
+      { token },
+    ),
   ]);
   const imported = new Set(
     gatewaySessions.flatMap((session) => session.nativeId ? [`${session.agent}:${session.nativeId}`] : []),
