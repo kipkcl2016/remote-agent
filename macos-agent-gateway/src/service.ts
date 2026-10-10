@@ -200,7 +200,11 @@ export class GatewayService {
       throw new Error("Invalid approval challenge id");
     }
     const ok = running.resolveApproval(challengeId, decision);
-    if (!ok) throw new Error("Approval challenge not found or already resolved");
+    if (!ok) {
+      throw new Error(
+        "Approval challenge not found, already resolved, or decision unavailable (allow requires allow_once)",
+      );
+    }
     this.record(id, {
       type: "status",
       payload: {

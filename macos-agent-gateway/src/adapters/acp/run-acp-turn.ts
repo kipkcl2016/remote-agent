@@ -7,7 +7,6 @@ import type { AdapterEvent, PermissionMode, RunningAgent } from "../../types.js"
 import { mapAcpSessionUpdate } from "./map-session-update.js";
 import {
   autoSelectPermissionOption,
-  findRejectOption,
   pickDecisionOptionId,
   summarizeToolParams,
   type AcpPermissionOption,
@@ -336,19 +335,10 @@ export async function launchAcpTurn(
       if (decision === "allow" || decision === "deny") {
         const optionId = pickDecisionOptionId(decision, entry.options);
         if (!optionId) {
-          // No once-option for allow (or no reject option for deny): fail closed.
-          // Prefer an explicit reject when allow cannot map to allow_once.
-          if (decision === "allow") {
-            const reject = findRejectOption(entry.options);
-            if (reject) {
-              return resolvePending(challengeId, {
-                outcome: { outcome: "selected", optionId: reject.optionId },
-              });
-            }
-            return resolvePending(challengeId, {
-              outcome: { outcome: "cancelled" },
-            });
-          }
+          // Allow without allow_once (or deny without reject*): refuse the HTTP
+          // resolve. Do NOT silently remap allow→deny under 200 — that made the
+          // phone show "已批准" while the agent was denied. Phone hides 批准 when
+          // options lack allow_once; Deny remains available.
           return false;
         }
         return resolvePending(challengeId, {

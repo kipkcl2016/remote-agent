@@ -82,6 +82,30 @@ test("[APPROVAL-001] phone allow never maps to allow_always", () => {
   );
 });
 
+
+test("[APPROVAL-001] phone UI should hide allow when options lack allow_once", () => {
+  const canAllow = (options: Array<{ kind: string }>) =>
+    options.some((option) => option.kind === "allow_once");
+  assert.equal(
+    canAllow([
+      { kind: "allow_always" },
+      { kind: "reject_once" },
+    ]),
+    false,
+  );
+  assert.equal(
+    canAllow([
+      { kind: "allow_once" },
+      { kind: "reject_once" },
+    ]),
+    true,
+  );
+  assert.equal(pickDecisionOptionId("allow", [
+    { optionId: "a", name: "Always", kind: "allow_always" },
+    { optionId: "r", name: "Reject", kind: "reject_once" },
+  ]), undefined);
+});
+
 test("[APPROVAL-001] empty options fail-closed (no auto, no allow pick)", () => {
   assert.equal(
     autoSelectPermissionOption("full", { name: "Bash" }, []),
@@ -260,6 +284,13 @@ test("[APPROVAL-001] phone can approve a Claude ACP permission challenge", async
       typeof approvalPayload?.summary === "string"
         && String(approvalPayload.summary).includes("command"),
       `approval card should include param summary, got ${JSON.stringify(approvalPayload)}`,
+    );
+    const optionKinds = Array.isArray(approvalPayload?.options)
+      ? (approvalPayload!.options as Array<{ kind?: string }>).map((o) => o.kind)
+      : [];
+    assert.ok(
+      optionKinds.includes("allow_once"),
+      `approval options must expose allow_once for phone 批准 button, got ${JSON.stringify(optionKinds)}`,
     );
 
     const resolved = await fetch(

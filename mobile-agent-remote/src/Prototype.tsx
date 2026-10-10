@@ -121,6 +121,8 @@ type DetailMessage = {
   approvalResolvable?: boolean;
   approvalResolved?: boolean;
   approvalExpired?: boolean;
+  /** False when ACP options lack allow_once — hide 批准 to avoid UI lying after fail-closed deny. */
+  approvalCanAllow?: boolean;
 };
 
 type DetailTurn = {
@@ -2952,14 +2954,16 @@ const DetailMessageCard = memo(function DetailMessageCard({
               >
                 拒绝
               </button>
-              <button
-                type="button"
-                className="detail-approval-allow"
-                data-testid={`approval-allow-${message.approvalChallengeId}`}
-                onClick={() => onResolveApproval(message.approvalChallengeId!, "allow")}
-              >
-                批准
-              </button>
+              {message.approvalCanAllow !== false ? (
+                <button
+                  type="button"
+                  className="detail-approval-allow"
+                  data-testid={`approval-allow-${message.approvalChallengeId}`}
+                  onClick={() => onResolveApproval(message.approvalChallengeId!, "allow")}
+                >
+                  批准
+                </button>
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -3567,7 +3571,8 @@ function sameDetailMessages(left: DetailMessage[], right: DetailMessage[]): bool
       && message.approvalChallengeId === other.approvalChallengeId
       && message.approvalResolvable === other.approvalResolvable
       && message.approvalResolved === other.approvalResolved
-      && message.approvalExpired === other.approvalExpired;
+      && message.approvalExpired === other.approvalExpired
+      && message.approvalCanAllow === other.approvalCanAllow;
   });
 }
 
@@ -3674,14 +3679,18 @@ function appendGatewayEvents(
         continue;
       }
 
+      const canAllow = approvalOptionsHaveAllowOnce(event.payload.options);
       next.push({
         id: `event-${event.seq}`,
         role: "assistant",
         kind: "approval",
         approvalChallengeId: challengeId,
         approvalResolvable: resolvable,
+        approvalCanAllow: canAllow,
         text: resolvable
-          ? `需要手机确认：${title}${kind ? `（${kind}）` : ""}${summaryLine}`
+          ? `需要手机确认：${title}${kind ? `（${kind}）` : ""}${summaryLine}${
+            resolvable && !canAllow ? "\n（无可单次批准选项，仅可拒绝）" : ""
+          }`
           : "Agent 正在等待 Mac 端确认操作权限。",
       });
       continue;
@@ -3746,7 +3755,16 @@ function groupDetailTurns(messages: DetailMessage[]): DetailTurn[] {
   return turns;
 }
 
+function approvalOptionsHaveAllowOnce(options: unknown): boolean {
+  if (!Array.isArray(options)) return true; // legacy/CLI cards: keep Allow unless we know otherwise
+  return options.some((option) => {
+    if (!option || typeof option !== "object") return false;
+    return (option as { kind?: unknown }).kind === "allow_once";
+  });
+}
+
 function formatPayloadValue(value: unknown): string {
+
   if (typeof value === "string") return value;
   if (!value) return "";
   try {
