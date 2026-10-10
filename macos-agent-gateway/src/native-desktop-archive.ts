@@ -24,7 +24,7 @@ export async function applyNativeDesktopArchive(
   if (agent === "cursor") {
     return archiveCursorComposer(sessionId, action === "archive");
   }
-  return { agent, ok: true, detail: "claude has no desktop archive; remote soft-hide only" };
+  return { agent, ok: true, detail: `${agent} has no desktop archive API; remote soft-hide only` };
 }
 
 async function archiveCodexThread(

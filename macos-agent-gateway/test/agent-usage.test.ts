@@ -58,7 +58,7 @@ test("Codex API auth mode is detected from auth.json and env", () => {
 
 test("Agent usage probes are cached for 60 seconds and failures stay structured", async () => {
   let nowMs = Date.parse("2026-08-11T00:00:00.000Z");
-  const calls: Record<AgentKind, number> = { cursor: 0, claude: 0, codex: 0 };
+  const calls: Record<AgentKind, number> = { cursor: 0, claude: 0, codex: 0, workbuddy: 0 };
   const available = (agent: AgentKind, updatedAt: string): AgentUsage => ({
     agent,
     state: "available",

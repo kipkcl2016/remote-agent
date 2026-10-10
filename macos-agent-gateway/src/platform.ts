@@ -24,6 +24,8 @@ export function getDefaultHistoryDirs() {
       cursorTranscripts: join(appData, "Cursor", "projects"),
       claude: join(home, ".claude", "projects"),
       codex: join(home, ".codex", "sessions"),
+      workbuddyDb: join(home, ".workbuddy", "workbuddy.db"),
+      workbuddyProjects: join(home, ".workbuddy", "projects"),
     };
   }
   
@@ -35,5 +37,7 @@ export function getDefaultHistoryDirs() {
     cursorTranscripts: join(home, ".cursor", "projects"),
     claude: join(home, ".claude", "projects"),
     codex: join(home, ".codex", "sessions"),
+    workbuddyDb: join(home, ".workbuddy", "workbuddy.db"),
+    workbuddyProjects: join(home, ".workbuddy", "projects"),
   };
 }

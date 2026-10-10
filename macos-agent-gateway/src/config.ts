@@ -21,6 +21,8 @@ export type GatewayConfig = {
     cursorTranscripts: string;
     claude: string;
     codex: string;
+    workbuddyDb: string;
+    workbuddyProjects: string;
   };
 };
 
@@ -50,6 +52,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig 
         cursorTranscripts: resolve(env.REMOTE_AGENT_CURSOR_TRANSCRIPTS_DIR ?? defaults.cursorTranscripts),
         claude: resolve(env.REMOTE_AGENT_CLAUDE_HISTORY_DIR ?? defaults.claude),
         codex: resolve(env.REMOTE_AGENT_CODEX_HISTORY_DIR ?? defaults.codex),
+        workbuddyDb: resolve(env.REMOTE_AGENT_WORKBUDDY_DB ?? defaults.workbuddyDb),
+        workbuddyProjects: resolve(env.REMOTE_AGENT_WORKBUDDY_PROJECTS_DIR ?? defaults.workbuddyProjects),
       };
     })(),
   };

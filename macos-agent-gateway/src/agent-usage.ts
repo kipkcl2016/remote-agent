@@ -39,6 +39,7 @@ export class AgentUsageService implements AgentUsageProvider {
     this.#probes = {
       cursor: options.probes?.cursor ?? ((updatedAt) => probeCursorUsage(updatedAt, cursorAuthDb)),
       claude: options.probes?.claude ?? probeClaudeUsage,
+      workbuddy: options.probes?.workbuddy ?? (async () => unavailableUsage("workbuddy", unavailableMessage("workbuddy"), new Date().toISOString())),
       codex: options.probes?.codex ?? probeCodexUsage,
     };
   }
@@ -55,6 +56,7 @@ export class AgentUsageService implements AgentUsageProvider {
       "cursor",
       "claude",
       "codex",
+      "workbuddy",
     ] as AgentKind[]).map(async (agent) => {
       try {
         return await this.#probes[agent](updatedAt);
@@ -444,7 +446,7 @@ function unavailableUsage(agent: AgentKind, message: string, updatedAt: string):
 }
 
 function unavailableMessage(agent: AgentKind): string {
-  const label = agent === "cursor" ? "Cursor" : agent === "claude" ? "Claude" : "Codex";
+  const label = agent === "cursor" ? "Cursor" : agent === "claude" ? "Claude" : agent === "workbuddy" ? "WorkBuddy" : "Codex";
   return `无法获取额度信息 · ${label} 探测失败`;
 }
 

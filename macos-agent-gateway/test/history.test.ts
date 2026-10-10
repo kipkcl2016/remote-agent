@@ -15,6 +15,8 @@ test("native history shows disallowed directories as browse-only", async () => {
     cursorTranscripts: join(root, "cursor-transcripts"),
     claude: join(root, "claude"),
     codex: join(root, "codex"),
+    workbuddyDb: join(root, "workbuddy.db"),
+    workbuddyProjects: join(root, "workbuddy-projects"),
   };
 
   try {
@@ -196,6 +198,8 @@ test("native history reads Codex response_item chat messages", async () => {
     cursorTranscripts: join(root, "cursor-transcripts"),
     claude: join(root, "claude"),
     codex: join(root, "codex"),
+    workbuddyDb: join(root, "workbuddy.db"),
+    workbuddyProjects: join(root, "workbuddy-projects"),
   };
 
   try {
@@ -278,6 +282,8 @@ test("native history ignores Codex archived sessions", async () => {
     cursorTranscripts: join(root, "cursor-transcripts"),
     claude: join(root, "claude"),
     codex: join(root, "codex"),
+    workbuddyDb: join(root, "workbuddy.db"),
+    workbuddyProjects: join(root, "workbuddy-projects"),
   };
 
   try {
@@ -337,6 +343,8 @@ test("native history caps each Agent project independently", async () => {
     cursorTranscripts: join(root, "cursor-transcripts"),
     claude: join(root, "claude"),
     codex: join(root, "codex"),
+    workbuddyDb: join(root, "workbuddy.db"),
+    workbuddyProjects: join(root, "workbuddy-projects"),
   };
   const codexThreads = {
     list: async () => [firstProject, secondProject].flatMap((cwd, projectIndex) => (

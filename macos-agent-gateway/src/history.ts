@@ -11,6 +11,11 @@ import {
 import { basename, dirname, extname, join } from "node:path";
 import type { CodexThreadProvider } from "./codex-threads.js";
 import { cursorProjectSlugFromCwd, scanCursorComposerHeaders } from "./cursor-composers.js";
+import {
+  findWorkbuddyMessagePath,
+  readWorkbuddyMessages,
+  scanWorkbuddySessions,
+} from "./workbuddy.js";
 import { resolveAllowedWorkingDirectory } from "./security.js";
 import { ProjectResolver } from "./project-resolver.js";
 import type { GatewayConfig } from "./config.js";
@@ -40,7 +45,7 @@ export class NativeHistoryService {
     const candidates = options.agent
       ? await this.scanAgent(options.agent)
       : (await Promise.all(
-        (["cursor", "claude", "codex"] as const).map((agent) => this.scanAgent(agent)),
+        (["cursor", "claude", "codex", "workbuddy"] as const).map((agent) => this.scanAgent(agent)),
       )).flat();
     const limit = Math.max(1, Math.min(options.limit ?? 100, 2_000));
     const perProjectLimit = options.perProjectLimit
@@ -117,6 +122,7 @@ export class NativeHistoryService {
       return [...new Map(sessions.map((session) => [session.id, session])).values()];
     }
     if (agent === "claude") return scanClaude(this.dirs.claude);
+    if (agent === "workbuddy") return scanWorkbuddySessions(this.dirs.workbuddyDb);
     // Active Codex sessions only; archived_sessions are intentionally ignored.
     const rollouts = deduplicateSessions(scanCodex(this.dirs.codex));
     if (this.codexThreads) {
@@ -407,12 +413,14 @@ function resolveNativeMessagePath(
 ): string | undefined {
   if (agent === "cursor") return findCursorTranscriptPath(dirs.cursorTranscripts, id, cwd);
   if (agent === "claude") return findClaudePath(dirs.claude, id);
+  if (agent === "workbuddy") return findWorkbuddyMessagePath(dirs.workbuddyProjects, id, cwd);
   return findCodexPath([dirs.codex], id);
 }
 
 function readNativeMessages(agent: AgentKind, path: string): NativeHistoryMessage[] {
   if (agent === "cursor") return readCursorMessages(path);
   if (agent === "claude") return readClaudeMessages(path);
+  if (agent === "workbuddy") return readWorkbuddyMessages(path);
   return readCodexMessages(path);
 }
 

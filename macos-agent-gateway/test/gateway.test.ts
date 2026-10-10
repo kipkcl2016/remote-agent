@@ -72,6 +72,8 @@ test("gateway pairs a device and serves the session lifecycle", async () => {
     cursorTranscripts: join(root, "cursor-transcripts"),
     claude: join(root, "claude"),
     codex: join(root, "codex"),
+    workbuddyDb: join(root, "workbuddy.db"),
+    workbuddyProjects: join(root, "workbuddy-projects"),
   };
   mkdirSync(join(historyDirs.codex, "2026", "08", "04"), { recursive: true });
   const nativeId = "11111111-1111-4111-8111-111111111111";
