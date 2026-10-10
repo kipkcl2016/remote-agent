@@ -18,7 +18,9 @@ import { App as CapacitorApp } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
 import { disambiguateProjectNames, groupSessionsByProjectDisplay } from "./project-sessions.js";
 import {
+  TbArchive,
   TbArrowLeft,
+  TbArrowBackUp,
   TbBrandOpenai,
   TbChevronDown,
   TbChevronRight,
@@ -58,10 +60,18 @@ import {
 } from "./credential-store";
 import { loadAppPreferences, saveAppPreferences } from "./app-preferences";
 import { openGatewaySessionEventStream, type GatewaySessionStreamHandle } from "./gateway-session-stream";
+import {
+  archiveLookupKeysFromEntries,
+  canArchiveSession,
+  filterSessionsByArchive,
+  isSessionArchived,
+  sessionArchiveLookupKeys,
+  type SessionArchiveEntry,
+} from "./session-archive.js";
 
 type AgentName = "Cursor" | "Claude" | "Codex";
 type SessionStatus = "running" | "attention" | "done" | "cancelled" | "failed";
-type SessionView = "recent" | "projects";
+type SessionView = "recent" | "projects" | "archived";
 type SessionSyncState = "idle" | "loading" | "refreshing" | "fresh" | "stale" | "error";
 type PermissionMode = "plan" | "ask" | "auto" | "full";
 
@@ -342,6 +352,9 @@ export default function Prototype() {
   const [sessionSyncState, setSessionSyncState] = useState<SessionSyncState>("idle");
   const [cacheSavedAt, setCacheSavedAt] = useState<string | null>(null);
   const [syncRequest, setSyncRequest] = useState(0);
+  const [archiveRevision, setArchiveRevision] = useState(0);
+  const [archivedSessions, setArchivedSessions] = useState<AgentSession[]>([]);
+  const [archiveEntries, setArchiveEntries] = useState<SessionArchiveEntry[]>([]);
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(() => new Set());
   const [filter, setFilter] = useState<(typeof filters)[number]>("全部");
   const [query, setQuery] = useState("");
@@ -480,7 +493,7 @@ export default function Prototype() {
     const synchronize = async (initial: boolean) => {
       if (initial) setConnectionBusy(true);
       try {
-        const state = await loadRemoteState(url, gatewayToken);
+        const state = await loadRemoteState(url, gatewayToken, "active");
         if (!active) return;
         const sessionsWithReadState = applySessionReadState(url, state.sessions, selectedSessionRef.current);
         setSessions((current) => sameSessions(current, sessionsWithReadState) ? current : sessionsWithReadState);
@@ -513,6 +526,51 @@ export default function Prototype() {
       window.clearInterval(timer);
     };
   }, [gatewayToken, gatewayUrl, syncRequest]);
+
+  useEffect(() => {
+    const url = normalizeGatewayUrl(gatewayUrl);
+    if (!url || !gatewayToken || !remoteOnline || sessionView !== "archived") {
+      if (sessionView !== "archived") setArchivedSessions([]);
+      return;
+    }
+    let active = true;
+    const loadArchived = async () => {
+      try {
+        const state = await loadRemoteState(url, gatewayToken, "archived");
+        if (!active) return;
+        setArchivedSessions(applySessionReadState(url, state.sessions, selectedSessionRef.current));
+      } catch {
+        if (active) setArchivedSessions([]);
+      }
+    };
+    void loadArchived();
+    return () => {
+      active = false;
+    };
+  }, [archiveRevision, gatewayToken, gatewayUrl, remoteOnline, sessionView]);
+
+  useEffect(() => {
+    const url = normalizeGatewayUrl(gatewayUrl);
+    if (!url || !gatewayToken) {
+      setArchiveEntries([]);
+      return;
+    }
+    let active = true;
+    const loadArchiveCatalog = async () => {
+      try {
+        const entries = await gatewayRequest<SessionArchiveEntry[]>(url, "/v1/session-archive", {
+          token: gatewayToken,
+        });
+        if (active) setArchiveEntries(entries);
+      } catch {
+        if (active) setArchiveEntries([]);
+      }
+    };
+    void loadArchiveCatalog();
+    return () => {
+      active = false;
+    };
+  }, [archiveRevision, gatewayToken, gatewayUrl]);
 
   useEffect(() => {
     const url = normalizeGatewayUrl(gatewayUrl);
@@ -558,10 +616,16 @@ export default function Prototype() {
     };
   }, [activeConnectionId, deviceName, gatewayUrl, remoteOnline, savedConnections]);
 
+  const archivedKeys = useMemo(
+    () => archiveLookupKeysFromEntries(archiveEntries),
+    [archiveEntries],
+  );
+
   const deferredQuery = useDeferredValue(query);
-  const visibleSessions = useMemo(() => {
+  const searchableSessions = useMemo(() => {
+    const source = sessionView === "archived" ? archivedSessions : sessions;
     const normalized = deferredQuery.trim().toLocaleLowerCase();
-    const filtered = sessions.filter((session) => {
+    return source.filter((session) => {
       const agentMatches = filter === "全部" || session.agent === filter;
       const textMatches =
         !normalized ||
@@ -570,8 +634,13 @@ export default function Prototype() {
           .includes(normalized);
       return agentMatches && textMatches;
     });
+  }, [archivedSessions, deferredQuery, filter, sessionView, sessions]);
+
+  const visibleSessions = useMemo(() => {
+    const archiveMode = sessionView === "archived" ? "archived" : "active";
+    const filtered = filterSessionsByArchive(searchableSessions, archivedKeys, archiveMode);
     return limitSessionsPerProject(filtered, PROJECT_SESSION_LIMIT);
-  }, [deferredQuery, filter, sessions]);
+  }, [archivedKeys, searchableSessions, sessionView]);
 
   const displayedSessions = useMemo(
     () => visibleSessions.slice(0, SESSION_DISPLAY_LIMIT),
@@ -604,12 +673,15 @@ export default function Prototype() {
     return knownProjects.find((project) => project.cwd === cwd)?.id ?? "__custom__";
   }, [knownProjects, workingDirectory]);
 
-  const statusSummary = useMemo(() => ({
-    running: visibleSessions.filter(
-      (session) => session.status === "running" || session.status === "attention",
-    ).length,
-    unread: visibleSessions.filter((session) => session.status === "done" && session.unread).length,
-  }), [visibleSessions]);
+  const statusSummary = useMemo(() => {
+    const activeSessions = filterSessionsByArchive(searchableSessions, archivedKeys, "active");
+    return {
+      running: activeSessions.filter(
+        (session) => session.status === "running" || session.status === "attention",
+      ).length,
+      unread: activeSessions.filter((session) => session.status === "done" && session.unread).length,
+    };
+  }, [archivedKeys, searchableSessions]);
   const detailTurns = useMemo(() => groupDetailTurns(detailMessages), [detailMessages]);
   const pinnedQuestion = useMemo(
     () => detailMessages.find((message) => message.id === pinnedQuestionId && message.role === "user") ?? null,
@@ -887,6 +959,60 @@ export default function Prototype() {
     setDetailReply("");
     setDetailError(null);
   }, [closeFilePreview, keyboard]);
+
+  const archiveActiveSession = useCallback(async (session: AgentSession) => {
+    if (!canArchiveSession(session.status)) {
+      setNotice("进行中的会话不能存档");
+      return;
+    }
+    const url = normalizeGatewayUrl(gatewayUrl);
+    if (!url || !gatewayToken) return;
+    try {
+      await gatewayRequest<SessionArchiveEntry[]>(url, "/v1/session-archive", {
+        method: "POST",
+        token: gatewayToken,
+        body: {
+          agent: agentToKind(session.agent),
+          id: session.id,
+          ...(session.nativeId ? { nativeId: session.nativeId } : {}),
+        },
+      });
+      setArchiveRevision((current) => current + 1);
+      setSessions((current) => current.filter((item) => sessionIdentity(item) !== sessionIdentity(session)));
+      if (selectedSessionRef.current && sessionIdentity(selectedSessionRef.current) === sessionIdentity(session)) {
+        closeSessionDetail();
+      }
+      setNotice("已存档，可在「已存档」中恢复");
+    } catch {
+      setNotice("存档失败，请稍后重试");
+    }
+  }, [closeSessionDetail, gatewayToken, gatewayUrl]);
+
+  const restoreArchivedSession = useCallback(async (session: AgentSession) => {
+    const url = normalizeGatewayUrl(gatewayUrl);
+    if (!url || !gatewayToken) return;
+    try {
+      await gatewayRequest<{ restored: boolean }>(url, "/v1/session-archive/restore", {
+        method: "POST",
+        token: gatewayToken,
+        body: {
+          agent: agentToKind(session.agent),
+          id: session.id,
+          ...(session.nativeId ? { nativeId: session.nativeId } : {}),
+        },
+      });
+      setArchiveRevision((current) => current + 1);
+      setArchivedSessions((current) => current.filter((item) => sessionIdentity(item) !== sessionIdentity(session)));
+      if (selectedSessionRef.current && sessionIdentity(selectedSessionRef.current) === sessionIdentity(session)) {
+        closeSessionDetail();
+      }
+      setNotice("已恢复到会话列表");
+      setSessionView("recent");
+      setSyncRequest((current) => current + 1);
+    } catch {
+      setNotice("恢复失败，请稍后重试");
+    }
+  }, [closeSessionDetail, gatewayToken, gatewayUrl]);
 
   const openSession = useCallback(async (session: AgentSession) => {
     keyboard.hide();
@@ -1658,7 +1784,9 @@ export default function Prototype() {
 
           <section className="session-section" aria-labelledby="recent-title">
             <div className="section-heading">
-              <h2 id="recent-title">{sessionView === "recent" ? "最近会话" : "项目会话"}</h2>
+              <h2 id="recent-title">
+                {sessionView === "archived" ? "已存档会话" : sessionView === "recent" ? "最近会话" : "项目会话"}
+              </h2>
               <div className="section-heading-actions">
                 <div className="session-view-switch" role="tablist" aria-label="会话浏览方式">
                   <button
@@ -1680,6 +1808,16 @@ export default function Prototype() {
                     data-testid="view-projects"
                   >
                     项目
+                  </button>
+                  <button
+                    type="button"
+                    className={sessionView === "archived" ? "is-selected" : ""}
+                    onClick={() => setSessionView("archived")}
+                    role="tab"
+                    aria-selected={sessionView === "archived"}
+                    data-testid="view-archived"
+                  >
+                    已存档
                   </button>
                 </div>
                 <button
@@ -1780,7 +1918,7 @@ export default function Prototype() {
                   <strong>{query !== deferredQuery ? "…" : statusSummary.unread}</strong>
                 </span>
               </div>
-              {!selectedSession && remoteOnline ? (
+              {!selectedSession && remoteOnline && sessionView !== "archived" ? (
                 <button
                   className="new-session-button"
                   type="button"
@@ -1830,6 +1968,7 @@ export default function Prototype() {
                         onToggle={toggleProject}
                         onCreate={createSessionInProject}
                         onOpen={openSession}
+                        onArchive={archiveActiveSession}
                       />
                     ))}
                   </div>
@@ -1839,6 +1978,8 @@ export default function Prototype() {
                       key={`${session.source}-${session.agent}-${session.id}`}
                       session={session}
                       onOpen={openSession}
+                      onArchive={sessionView === "archived" ? undefined : archiveActiveSession}
+                      onRestore={sessionView === "archived" ? restoreArchivedSession : undefined}
                     />
                   ))
                 )
@@ -1847,20 +1988,26 @@ export default function Prototype() {
                   {sessionSyncState === "loading"
                     ? <TbRefresh className="loading-icon" aria-hidden="true" />
                     : remoteOnline
-                      ? <TbSearch aria-hidden="true" />
+                      ? sessionView === "archived"
+                        ? <TbArchive aria-hidden="true" />
+                        : <TbSearch aria-hidden="true" />
                       : <TbWifiOff aria-hidden="true" />}
                   <strong>
                     {sessionSyncState === "loading"
                       ? "正在加载会话"
                       : remoteOnline
-                        ? "没有找到会话"
+                        ? sessionView === "archived"
+                          ? "没有已存档会话"
+                          : "没有找到会话"
                         : "连接 Mac 后查看真实会话"}
                   </strong>
                   <span>
                     {sessionSyncState === "loading"
                       ? "首次连接需要从 Mac 读取 Cursor、Claude 和 Codex 历史。"
                       : remoteOnline
-                      ? "换一个关键词或 Agent 试试"
+                      ? sessionView === "archived"
+                        ? "存档仅在本手机隐藏会话，不会删除 Mac 上的历史"
+                        : "换一个关键词或 Agent 试试"
                       : "不会再显示模拟数据；配对成功后自动同步 Cursor、Claude 和 Codex。"}
                   </span>
                   {!remoteOnline && sessionSyncState !== "loading" ? (
@@ -2046,6 +2193,28 @@ export default function Prototype() {
                 data-testid="session-cancel"
               >
                 {detailCancelling ? <TbRefresh aria-hidden="true" /> : "取消"}
+              </button>
+            ) : isSessionArchived(selectedSession, archivedKeys) ? (
+              <button
+                type="button"
+                className="session-detail-restore"
+                onClick={() => void restoreArchivedSession(selectedSession)}
+                aria-label="恢复会话到列表"
+                data-testid="session-detail-restore"
+              >
+                <TbArrowBackUp aria-hidden="true" />
+                恢复
+              </button>
+            ) : canArchiveSession(selectedSession.status) ? (
+              <button
+                type="button"
+                className="session-detail-archive"
+                onClick={() => void archiveActiveSession(selectedSession)}
+                aria-label="存档会话"
+                data-testid="session-detail-archive"
+              >
+                <TbArchive aria-hidden="true" />
+                存档
               </button>
             ) : null}
             <AgentIcon agent={selectedSession.agent} framed />
@@ -2614,6 +2783,7 @@ const ProjectGroupCard = memo(function ProjectGroupCard({
   onToggle,
   onCreate,
   onOpen,
+  onArchive,
 }: {
   group: ProjectGroup;
   expanded: boolean;
@@ -2621,6 +2791,7 @@ const ProjectGroupCard = memo(function ProjectGroupCard({
   onToggle: (projectId: string) => void;
   onCreate: (group: ProjectGroup) => void;
   onOpen: (session: AgentSession) => void | Promise<void>;
+  onArchive: (session: AgentSession) => void;
 }) {
   return (
     <article className={`project-group ${expanded ? "is-expanded" : ""}`} data-testid="project-group">
@@ -2660,6 +2831,7 @@ const ProjectGroupCard = memo(function ProjectGroupCard({
               key={`${session.source}-${session.agent}-${session.id}`}
               session={session}
               onOpen={onOpen}
+              onArchive={onArchive}
             />
           ))}
         </div>
@@ -2671,35 +2843,64 @@ const ProjectGroupCard = memo(function ProjectGroupCard({
 const SessionRow = memo(function SessionRow({
   session,
   onOpen,
+  onArchive,
+  onRestore,
 }: {
   session: AgentSession;
   onOpen: (session: AgentSession) => void | Promise<void>;
+  onArchive?: (session: AgentSession) => void;
+  onRestore?: (session: AgentSession) => void;
 }) {
   const stateLabel = sessionStateLabel(session);
+  const showArchive = onArchive && canArchiveSession(session.status);
+  const showRestore = Boolean(onRestore);
   return (
-    <button
-      className={`session-row ${session.unread ? "is-unread" : ""}`}
-      type="button"
-      onClick={() => void onOpen(session)}
-      aria-label={`打开会话：${session.title}${stateLabel ? `，${stateLabel}` : ""}`}
-      data-testid={`session-${session.id}`}
-    >
-      <AgentIcon agent={session.agent} framed />
-      <span className="session-copy">
-        <strong>{session.title}</strong>
-        <span className="session-project">
-          <span>{session.project}</span>
-          {session.projectHint ? (
-            <span className="session-project-hint">{session.projectHint}</span>
-          ) : null}
+    <div className={`session-row-shell ${session.unread ? "is-unread" : ""}`}>
+      <button
+        className="session-row"
+        type="button"
+        onClick={() => void onOpen(session)}
+        aria-label={`打开会话：${session.title}${stateLabel ? `，${stateLabel}` : ""}`}
+        data-testid={`session-${session.id}`}
+      >
+        <AgentIcon agent={session.agent} framed />
+        <span className="session-copy">
+          <strong>{session.title}</strong>
+          <span className="session-project">
+            <span>{session.project}</span>
+            {session.projectHint ? (
+              <span className="session-project-hint">{session.projectHint}</span>
+            ) : null}
+          </span>
         </span>
-      </span>
-      <span className="session-meta">
-        <SessionStateIndicator session={session} placement="list" />
-        <time>{session.time}</time>
-      </span>
-      <TbChevronRight className="session-chevron" aria-hidden="true" />
-    </button>
+        <span className="session-meta">
+          <SessionStateIndicator session={session} placement="list" />
+          <time>{session.time}</time>
+        </span>
+        <TbChevronRight className="session-chevron" aria-hidden="true" />
+      </button>
+      {showRestore ? (
+        <button
+          type="button"
+          className="session-row-side-action is-restore"
+          onClick={() => onRestore?.(session)}
+          aria-label={`恢复会话：${session.title}`}
+          data-testid={`session-restore-${session.id}`}
+        >
+          <TbArrowBackUp aria-hidden="true" />
+        </button>
+      ) : showArchive ? (
+        <button
+          type="button"
+          className="session-row-side-action is-archive"
+          onClick={() => onArchive(session)}
+          aria-label={`存档会话：${session.title}`}
+          data-testid={`session-archive-${session.id}`}
+        >
+          <TbArchive aria-hidden="true" />
+        </button>
+      ) : null}
+    </div>
   );
 });
 
@@ -2951,23 +3152,30 @@ type GatewayRequestOptions = {
   body?: Record<string, unknown>;
 };
 
-async function loadRemoteState(url: string, token: string): Promise<{
+async function loadRemoteState(
+  url: string,
+  token: string,
+  visibility: "active" | "archived" = "active",
+): Promise<{
   sessions: AgentSession[];
   hostname: string;
   allowedRoots: string[];
   devices: PairedDeviceApi[];
   agents: AgentAvailabilityApi[];
+  archiveEntries: SessionArchiveEntry[];
 }> {
-  const [gatewaySessions, nativeHistory, config, devices, agents] = await Promise.all([
-    gatewayRequest<GatewaySessionApi[]>(url, "/v1/sessions?limit=200", { token }),
+  const visibilityQuery = `visibility=${visibility}`;
+  const [gatewaySessions, nativeHistory, config, devices, agents, archiveEntries] = await Promise.all([
+    gatewayRequest<GatewaySessionApi[]>(url, `/v1/sessions?limit=200&${visibilityQuery}`, { token }),
     gatewayRequest<NativeHistoryApi[]>(
       url,
-      "/v1/history?limit=2000&perProjectLimit=20",
+      `/v1/history?limit=2000&perProjectLimit=20&${visibilityQuery}`,
       { token },
     ),
     gatewayRequest<{ hostname: string; allowedRoots: string[] }>(url, "/v1/config", { token }),
     gatewayRequest<PairedDeviceApi[]>(url, "/v1/devices", { token }),
     gatewayRequest<unknown>(url, "/v1/agents", { token }),
+    gatewayRequest<SessionArchiveEntry[]>(url, "/v1/session-archive", { token }),
   ]);
   const imported = new Set(
     gatewaySessions.flatMap((session) => session.nativeId ? [`${session.agent}:${session.nativeId}`] : []),
@@ -2984,6 +3192,7 @@ async function loadRemoteState(url: string, token: string): Promise<{
     allowedRoots: config.allowedRoots,
     devices,
     agents: normalizeAgentAvailability(agents),
+    archiveEntries,
   };
 }
 

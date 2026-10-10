@@ -2,8 +2,16 @@ import { randomUUID } from "node:crypto";
 import { EventHub } from "./event-hub.js";
 import { AgentRegistry } from "./agent-registry.js";
 import { resolveAllowedWorkingDirectory } from "./security.js";
+import {
+  buildSessionArchiveLookupSet,
+  filterByArchiveVisibility,
+  isArchiveBlockedStatus,
+  sessionArchiveKeys,
+  type SessionArchiveRecord,
+} from "./session-archive.js";
 import { GatewayStore } from "./store.js";
 import { ProjectResolver } from "./project-resolver.js";
+import type { NativeHistoryService } from "./history.js";
 import type {
   AdapterEvent,
   AgentAvailability,
@@ -33,8 +41,48 @@ export class GatewayService {
     return this.registry.availability();
   }
 
-  listSessions(options: { agent?: AgentKind; limit?: number } = {}): GatewaySession[] {
-    return this.store.listSessions(options).map((session) => this.#withProject(session));
+  listSessions(
+    options: { agent?: AgentKind; limit?: number; deviceId?: string; visibility?: "active" | "archived" } = {},
+  ): GatewaySession[] {
+    const visibility = options.visibility ?? "active";
+    const sessions = this.store.listSessions(options).map((session) => this.#withProject(session));
+    if (!options.deviceId) return sessions;
+    const archivedKeys = buildSessionArchiveLookupSet(this.store.listSessionArchive(options.deviceId));
+    return filterByArchiveVisibility(sessions, archivedKeys, visibility);
+  }
+
+  listSessionArchive(deviceId: string): SessionArchiveRecord[] {
+    return this.store.listSessionArchive(deviceId);
+  }
+
+  async archiveSession(
+    deviceId: string,
+    agent: AgentKind,
+    id: string,
+    nativeId?: string,
+    history?: NativeHistoryService,
+  ): Promise<SessionArchiveRecord[]> {
+    const blocked = await this.#resolveArchiveBlockReason(agent, id, nativeId, history);
+    if (blocked) throw new ArchiveConflictError(blocked);
+    return this.store.archiveSession(deviceId, agent, id, nativeId);
+  }
+
+  restoreSession(
+    deviceId: string,
+    agent: AgentKind,
+    id: string,
+    nativeId?: string,
+  ): boolean {
+    return this.store.restoreSession(deviceId, agent, id, nativeId);
+  }
+
+  filterNativeHistoryByArchive<T extends { agent: AgentKind; id: string; nativeId?: string }>(
+    deviceId: string,
+    sessions: T[],
+    visibility: "active" | "archived",
+  ): T[] {
+    const archivedKeys = buildSessionArchiveLookupSet(this.store.listSessionArchive(deviceId));
+    return filterByArchiveVisibility(sessions, archivedKeys, visibility);
   }
 
   getSession(id: string): GatewaySession | undefined {
@@ -178,6 +226,46 @@ export class GatewayService {
 
   #withProject(session: GatewaySession): GatewaySession {
     return { ...session, ...this.#projects.resolveStored(session.cwd) };
+  }
+
+  async #resolveArchiveBlockReason(
+    agent: AgentKind,
+    id: string,
+    nativeId?: string,
+    history?: NativeHistoryService,
+  ): Promise<string | undefined> {
+    const gateway = this.store.getSession(id);
+    if (gateway?.agent === agent && isArchiveBlockedStatus(gateway.status)) {
+      return "Active sessions cannot be archived";
+    }
+    if (this.#active.has(id)) {
+      return "Active sessions cannot be archived";
+    }
+    const candidates = this.store.listSessions({ agent, limit: 250 });
+    for (const session of candidates) {
+      const matches = session.id === id
+        || (nativeId && session.nativeId === nativeId)
+        || session.nativeId === id;
+      if (!matches) continue;
+      if (isArchiveBlockedStatus(session.status) || this.#active.has(session.id)) {
+        return "Active sessions cannot be archived";
+      }
+    }
+    if (history) {
+      for (const key of sessionArchiveKeys(agent, id, nativeId)) {
+        const native = await history.get(agent, key);
+        if (native?.status === "running") {
+          return "Active sessions cannot be archived";
+        }
+      }
+    }
+    return undefined;
+  }
+}
+
+export class ArchiveConflictError extends Error {
+  constructor(message: string) {
+    super(message);
   }
 }
 

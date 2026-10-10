@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { EventHub } from "./event-hub.js";
 import { PairingManager, createDeviceToken, hashToken, isLoopbackAddress } from "./security.js";
-import { GatewayService } from "./service.js";
+import { ArchiveConflictError, GatewayService } from "./service.js";
 import { NativeHistoryService } from "./history.js";
 import { readSessionFile, SessionFileError, type SessionFile } from "./session-files.js";
 import type { GatewayConfig } from "./config.js";
@@ -130,19 +130,63 @@ export function createGatewayHttpServer(options: GatewayHttpOptions): Server {
           sendError(response, 400, "Unknown agent filter");
           return;
         }
+        const visibility = parseArchiveVisibility(requestUrl.searchParams.get("visibility"));
         const agent = agentParam && isAgentKind(agentParam) ? agentParam : undefined;
         const limit = parsePositiveInteger(requestUrl.searchParams.get("limit"), 100);
         const perProjectLimit = parsePositiveInteger(
           requestUrl.searchParams.get("perProjectLimit"),
           20,
         );
-        sendJson(response, 200, {
-          data: await history.list({
-            ...(agent ? { agent } : {}),
-            limit,
-            perProjectLimit,
-          }),
+        const listed = await history.list({
+          ...(agent ? { agent } : {}),
+          limit,
+          perProjectLimit,
         });
+        sendJson(response, 200, {
+          data: service.filterNativeHistoryByArchive(currentDeviceId, listed, visibility),
+        });
+        return;
+      }
+
+      if (request.method === "GET" && requestUrl.pathname === "/v1/session-archive") {
+        sendJson(response, 200, { data: service.listSessionArchive(currentDeviceId) });
+        return;
+      }
+
+      if (request.method === "POST" && requestUrl.pathname === "/v1/session-archive") {
+        const body = await readJson(request, config.maxBodyBytes);
+        const agent = body.agent;
+        if (!isAgentKind(agent)) throw new ClientError(400, "Unknown agent");
+        const id = readRequiredString(body, "id", 200);
+        const nativeId = readOptionalString(body, "nativeId", 200);
+        try {
+          sendJson(response, 200, {
+            data: await service.archiveSession(
+              currentDeviceId,
+              agent,
+              id,
+              nativeId,
+              history,
+            ),
+          });
+        } catch (error) {
+          if (error instanceof ArchiveConflictError) {
+            throw new ClientError(409, error.message);
+          }
+          throw error;
+        }
+        return;
+      }
+
+      if (request.method === "POST" && requestUrl.pathname === "/v1/session-archive/restore") {
+        const body = await readJson(request, config.maxBodyBytes);
+        const agent = body.agent;
+        if (!isAgentKind(agent)) throw new ClientError(400, "Unknown agent");
+        const id = readRequiredString(body, "id", 200);
+        const nativeId = readOptionalString(body, "nativeId", 200);
+        const restored = service.restoreSession(currentDeviceId, agent, id, nativeId);
+        if (!restored) throw new ClientError(404, "Archived session not found");
+        sendJson(response, 200, { data: { restored: true } });
         return;
       }
 
@@ -227,12 +271,15 @@ export function createGatewayHttpServer(options: GatewayHttpOptions): Server {
           sendError(response, 400, "Unknown agent filter");
           return;
         }
+        const visibility = parseArchiveVisibility(requestUrl.searchParams.get("visibility"));
         const agent = agentParam && isAgentKind(agentParam) ? agentParam : undefined;
         const limit = parsePositiveInteger(requestUrl.searchParams.get("limit"), 100);
         sendJson(response, 200, {
           data: service.listSessions({
             ...(agent ? { agent } : {}),
             limit,
+            deviceId: currentDeviceId,
+            visibility,
           }),
         });
         return;
@@ -396,6 +443,28 @@ function readRequiredString(body: Record<string, unknown>, key: string, maxLengt
   }
   if (value.length > maxLength) throw new ClientError(400, `${key} is too long`);
   return value.trim();
+}
+
+function readOptionalString(
+  body: Record<string, unknown>,
+  key: string,
+  maxLength: number,
+): string | undefined {
+  const value = body[key];
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "string" || !value.trim()) {
+    throw new ClientError(400, `${key} must be a non-empty string`);
+  }
+  if (value.length > maxLength) throw new ClientError(400, `${key} is too long`);
+  return value.trim();
+}
+
+function parseArchiveVisibility(raw: string | null): "active" | "archived" {
+  if (raw === "archived") return "archived";
+  if (raw && raw !== "active") {
+    throw new ClientError(400, "Unknown visibility filter");
+  }
+  return "active";
 }
 
 function sendJson(response: ServerResponse, status: number, body: unknown): void {
