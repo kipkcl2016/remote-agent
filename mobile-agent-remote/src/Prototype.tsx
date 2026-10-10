@@ -22,7 +22,7 @@ import {
   TbBrandOpenai,
   TbChevronDown,
   TbChevronRight,
-  TbCode,
+  TbUser,
   TbDeviceLaptop,
   TbDownload,
   TbFile,
@@ -2733,7 +2733,7 @@ const DetailMessageCard = memo(function DetailMessageCard({
           ? <TbTerminal2 aria-hidden="true" />
           : message.role === "assistant"
             ? <AgentIcon agent={agent} />
-            : <TbCode aria-hidden="true" />}
+            : <TbUser aria-hidden="true" />}
       </span>
       {message.kind === "diagnostic" ? (
         <details className="detail-diagnostic" data-testid="diagnostic-log">
