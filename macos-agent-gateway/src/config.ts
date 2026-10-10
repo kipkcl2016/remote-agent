@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { delimiter, resolve } from "node:path";
+import { resolve } from "node:path";
 import { getDefaultHistoryDirs } from "./platform.js";
 
 /** Comma-separated default for `REMOTE_AGENT_ALLOWED_ORIGINS` (Vite dev client on localhost and 127.0.0.1). */
@@ -27,11 +27,7 @@ export type GatewayConfig = {
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig {
   const port = parseInteger(env.REMOTE_AGENT_PORT, 17_821);
   const dataDir = resolve(env.REMOTE_AGENT_DATA_DIR ?? `${homedir()}/.remote-agent`);
-  const roots = (env.REMOTE_AGENT_ROOTS ?? process.cwd())
-    .split(delimiter)
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .map((item) => resolve(item));
+  const roots = parseRemoteAgentRoots(env.REMOTE_AGENT_ROOTS ?? process.cwd());
   const origins = (env.REMOTE_AGENT_ALLOWED_ORIGINS ?? DEFAULT_REMOTE_AGENT_ALLOWED_ORIGINS)
     .split(",")
     .map((item) => item.trim())
@@ -57,6 +53,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig 
       };
     })(),
   };
+}
+
+/** Split `REMOTE_AGENT_ROOTS` on `:` or `;` so LaunchAgent / shell can list multiple explicit roots. */
+export function parseRemoteAgentRoots(raw: string): string[] {
+  return raw
+    .split(/[:;]/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((item) => resolve(item));
 }
 
 function parseInteger(raw: string | undefined, fallback: number): number {

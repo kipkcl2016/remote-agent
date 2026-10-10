@@ -189,7 +189,10 @@ function main(): void {
   if (command === "install") install(process.argv.slice(3));
   else if (command === "uninstall") uninstall();
   else if (command === "status") status();
-  else throw new Error("用法：service-manager.ts <install [allowed-root ...] | status | uninstall>");
+  else throw new Error(
+    "用法：service-manager.ts <install [allowed-root ...] | status | uninstall>\n" +
+      "示例：npm run service:install -- \"$HOME/projects\" \"$HOME/.codex/worktrees\"",
+  );
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

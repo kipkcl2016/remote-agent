@@ -188,8 +188,8 @@ Sheet 副标题使用网关 `hostname`（例如 `TestMac.local`），不再使�
 ## 12. Mac 网关与运维
 
 - 默认端口 `17821`；开发可绑定 `0.0.0.0` 供局域网访问（仅受信任网络）。
-- `REMOTE_AGENT_ROOTS`：新建/续接/读文件的真实路径白名单（macOS 用 `:` 分隔）。
-- 可选 launchd 用户服务：`service:install` / `status` / `uninstall`；卸载保留 SQLite 与日志。
+- `REMOTE_AGENT_ROOTS`：新建/续接/读文件的真实路径白名单（macOS 用 `:`、`;` 均可分隔多个绝对路径）。
+- 可选 launchd 用户服务：`service:install` / `status` / `uninstall`；卸载保留 SQLite 与日志。多个根目录示例：`npm run service:install -- "$HOME/projects" "$HOME/.codex/worktrees"`（Codex worktree 须显式加入白名单才可续接，安全模型不变）。
 - 项目若在 Desktop/Documents/Downloads，可能需给 Node「完全磁盘访问权限」。
 
 主要 HTTP 能力（均需设备 Bearer，除健康检查与配对）：健康检查、配对、设备列表与撤销、Agent 检测与额度、配置（hostname/roots）、会话 CRUD/继续/取消/事件（含 SSE）、原生历史列表/消息/续接/文件读取。

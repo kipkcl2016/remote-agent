@@ -28,7 +28,7 @@
 
 若显式设置 `REMOTE_AGENT_HOST=0.0.0.0`，必须同时保证网络隔离和 TLS。普通 HTTP 只适合受控的本地联调，不具备链路加密，移动端会明确显示“已配对 · 本地网络”。
 
-`npm run service:install` 创建的 launchd 内测服务会显式监听 `0.0.0.0`。它只适用于受信任的私有网络，不能直接暴露到公网。若白名单项目位于 `Desktop`、`Documents` 或 `Downloads`，macOS TCC 可能阻止后台 Node/Agent 访问；需授予安装输出中的 Node 路径“完全磁盘访问权限”，或使用 `~/Projects` 等非受保护目录。
+`npm run service:install` 创建的 launchd 内测服务会显式监听 `0.0.0.0`。它只适用于受信任的私有网络，不能直接暴露到公网。若白名单项目位于 `Desktop`、`Documents` 或 `Downloads`，macOS TCC 可能阻止后台 Node/Agent 访问；需授予安装输出中的 Node 路径“完全磁盘访问权限”，或使用 `~/Projects` 等非受保护目录。`service:install` 可传入多个绝对路径根目录（如 `~/projects` 与 `~/.codex/worktrees`）；仅列入 `REMOTE_AGENT_ROOTS` 的路径可续接/执行，历史只读可见性规则不变。
 
 Windows 无内置 launchd 等价物；v0.1.0 需手动运行 `start-gateway.bat` 或使用任务计划/NSSM 自启动。默认应以**当前用户**、**最小权限**运行，并保持 `REMOTE_AGENT_HOST=127.0.0.1`，避免以 Local System 监听 `0.0.0.0` 扩大暴露面。方案对比、示例脚本与签名分阶段规划见 [`ops/windows-service-and-signing.md`](ops/windows-service-and-signing.md)。
 
