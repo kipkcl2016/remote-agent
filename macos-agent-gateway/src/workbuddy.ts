@@ -50,7 +50,7 @@ export function scanWorkbuddySessions(dbPath: string): NativeHistorySession[] {
         ...(Number.isFinite(createdMs) ? { createdAt: new Date(createdMs).toISOString() } : {}),
         updatedAt: new Date(updatedMs).toISOString(),
         status: mapWorkbuddyStatus(row.status),
-        resumable: false,
+        resumable: true,
         source: "native" as const,
       }];
     });
