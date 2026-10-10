@@ -87,6 +87,7 @@ test("session archive stores alias keys and filters sessions per device", async 
 
   assert.equal(store.restoreSession(deviceA, "cursor", "gw-1", "native-1"), true);
   assert.equal(service.listSessions({ deviceId: deviceA, visibility: "active" }).length, 2);
+  store.close();
   rmSync(root, { recursive: true, force: true });
 });
 
@@ -199,6 +200,7 @@ test("session archive HTTP rejects running sessions and scopes by bearer device"
   } finally {
     server.close();
     await once(server, "close");
+    store.close();
     rmSync(root, { recursive: true, force: true });
   }
 });

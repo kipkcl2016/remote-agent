@@ -85,12 +85,12 @@ test("Agent usage probes are cached for 60 seconds and failures stay structured"
 
   const first = await service.list();
   const second = await service.list();
-  assert.deepEqual(calls, { cursor: 1, claude: 1, codex: 1 });
+  assert.deepEqual(calls, { cursor: 1, claude: 1, codex: 1, workbuddy: 0 });
   assert.equal(first[1]?.state, "unavailable");
   assert.match(first[1]?.message ?? "", /^无法获取额度信息/);
   assert.deepEqual(second, first);
 
   nowMs += 60_001;
   await service.list();
-  assert.deepEqual(calls, { cursor: 2, claude: 2, codex: 2 });
+  assert.deepEqual(calls, { cursor: 2, claude: 2, codex: 2, workbuddy: 0 });
 });
