@@ -849,7 +849,7 @@ export default function Prototype() {
       return;
     }
     if (!selectedChannel) {
-      setNotice("请先选择 Agent 通道");
+      setNotice("请先选择 Agent 渠道");
       return;
     }
     keyboard.hide();
@@ -1799,7 +1799,7 @@ export default function Prototype() {
             <div className="section-heading">
               <h2 id="recent-title">
                 {!selectedChannel
-                  ? "选择通道"
+                  ? "选择渠道"
                   : sessionView === "recent"
                     ? `${selectedChannel} · 最近`
                     : `${selectedChannel} · 项目`}
@@ -1811,9 +1811,9 @@ export default function Prototype() {
                     className="channel-switch-button"
                     onClick={() => selectAgentFilter("全部")}
                     data-testid="switch-channel"
-                    aria-label="返回通道选择"
+                    aria-label="返回渠道选择"
                   >
-                    切换通道
+                    切换渠道
                   </button>
                 ) : null}
                 {selectedChannel ? (
@@ -1881,48 +1881,6 @@ export default function Prototype() {
               </div>
             ) : null}
 
-            {selectedChannel ? (
-              <div
-                className="agent-filters channel-filters"
-                style={{ gridTemplateColumns: `repeat(${Math.max(installedChannels.length, 1)}, 1fr)` }}
-                aria-label="当前 Agent 通道"
-                role="tablist"
-              >
-                {installedChannels.map((item) => {
-                  const installCaption = agentInstallCaption(item);
-                  return (
-                    <button
-                      key={item}
-                      type="button"
-                      className={selectedChannel === item ? "is-selected" : ""}
-                      onClick={() => selectChannel(item)}
-                      aria-pressed={selectedChannel === item}
-                      aria-selected={selectedChannel === item}
-                      role="tab"
-                      data-testid={`filter-${item}`}
-                    >
-                      <span className="agent-filter-copy">
-                        <span>{item}</span>
-                        <AgentUsageStatus
-                          agent={item}
-                          usage={agentUsages?.find((usage) => kindToAgent(usage.agent) === item) ?? null}
-                          connected={remoteOnline}
-                        />
-                        {installCaption ? (
-                          <span
-                            className="agent-filter-install"
-                            data-testid={`agent-install-${item}`}
-                          >
-                            {installCaption}
-                          </span>
-                        ) : null}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            ) : null}
-
             {selectedChannel ? <div className="filter-feedback" data-testid="filter-feedback">
               <div className="status-summary-group" role="status" aria-live="polite">
                 <span className="status-summary-item is-running">
@@ -1977,8 +1935,8 @@ export default function Prototype() {
               {remoteOnline && !selectedChannel ? (
                 <div className="channel-picker" role="group" aria-label="选择 Agent 通道" data-testid="channel-picker">
                   <div className="channel-picker-copy">
-                    <strong>选择通道</strong>
-                    <span>先挑选本机已安装的 Agent，再加载对应会话历史。</span>
+                    <strong>选择渠道</strong>
+                    <span>先挑选本机已安装的 Agent 渠道，再加载对应会话历史。</span>
                   </div>
                   {connectionBusy && !agentAvailability ? (
                     <div className="channel-picker-loading" role="status">
@@ -2071,12 +2029,12 @@ export default function Prototype() {
                     {sessionSyncState === "loading"
                       ? `正在从 Mac 读取 ${selectedChannel ?? "Agent"} 历史…`
                       : remoteOnline
-                      ? "换一个关键词试试，或切换其他通道"
-                      : "配对成功后先选择通道，再同步对应 Agent 的会话。"}
+                      ? "换一个关键词试试，或切换其他渠道"
+                      : "配对成功后先选择渠道，再同步对应 Agent 的会话。"}
                   </span>
                   {remoteOnline && selectedChannel ? (
                     <button type="button" onClick={() => selectAgentFilter("全部")} data-testid="back-to-channels">
-                      返回通道选择
+                      返回渠道选择
                     </button>
                   ) : null}
                   {!remoteOnline && sessionSyncState !== "loading" ? (
