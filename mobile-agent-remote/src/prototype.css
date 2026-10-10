@@ -2593,3 +2593,45 @@ button.markdown-remote-image {
   background: #2f6fed;
   color: #fff;
 }
+
+.detail-message.is-approval {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+}
+
+.detail-approval {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.detail-approval p {
+  white-space: pre-wrap;
+  margin: 0;
+}
+
+.detail-approval-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.detail-approval-actions button {
+  appearance: none;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  padding: 8px 14px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.detail-approval-allow {
+  background: var(--accent);
+  color: #fff;
+  border-color: transparent;
+}
+
+.detail-approval-deny {
+  background: transparent;
+  color: var(--text);
+}

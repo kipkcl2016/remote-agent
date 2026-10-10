@@ -43,7 +43,7 @@
 | --- | --- | --- |
 | `queued` | 会话已持久化，尚未进入 Agent 执行 | 新建或继续请求 |
 | `running` | adapter 已开始或收到运行/输出事件 | `GatewayService.launch`、status/output |
-| `waiting_approval` | CLI 输出了 approval/permission 类事件 | `approval` 事件；当前无手机 resolve |
+| `waiting_approval` | CLI/ACP 输出了 approval/permission 类事件 | `approval` 事件；Claude ACP 路径可手机 resolve |
 | `completed` | CLI 明确完成，或进程以 0 退出且未出现终止事件 | `completed` 事件 |
 | `failed` | CLI error、spawn 错误或非零退出且未出现终止事件 | `error` 事件 |
 | `cancelled` | 活动进程收到取消 | cancel API 或网关关闭 |
@@ -58,6 +58,7 @@ stateDiagram-v2
   running --> completed: completed / clean exit
   running --> failed: error / failed exit
   running --> cancelled: cancel
+  waiting_approval --> running: phone/Mac resolve approval
   waiting_approval --> completed: later completed event
   waiting_approval --> failed: later error event
   waiting_approval --> cancelled: cancel while active
@@ -75,7 +76,7 @@ stateDiagram-v2
 | `status` | `status` 或 `phase` | 生命周期状态 |
 | `output` | `stream`, `text` | 用户、助手、stdout/stderr 或 delta 文本 |
 | `tool` | `name`，可选 `id/input/command/status` | 工具/命令执行摘要 |
-| `approval` | 当前可能含 `raw` | 表示等待 Mac 端权限处理；不得理解为手机可审批 |
+| `approval` | `challengeId?`, `resolvable?`, `title/name/kind?`, `summary?`, `options?`, `auto?`, `expired?`, `selectedOptionKind?`, 或旧 `raw` | Claude ACP：`resolvable:true` 时可手机 resolve；`summary` 为工具参数/命令/路径截断；`auto:true` 为自动放行审计（不可点）；`expired:true` 标记超时过期卡片；手机「批准」仅映射 `allow_once`（从不持久化 `allow_always`）；空 options 网关 fail-closed 不发手机；旧 CLI 仍可能仅含 `raw` |
 | `completed` | 可选 `source/exitCode` | 正常终止 |
 | `error` | `message`，可选 `exitCode/signal` | 执行失败 |
 
@@ -231,6 +232,7 @@ type PairedDevice = {
 | `GET /v1/sessions/:id` | 是 | 200 | — | `GatewaySession` |
 | `GET /v1/sessions/:id/events` | 是 | 200 | query `after?` 或 `Last-Event-ID` | JSON `SessionEvent[]` 或 SSE |
 | `POST /v1/sessions/:id/messages` | 是 | 202 | `{prompt}` | `GatewaySession` |
+| `POST /v1/sessions/:id/approvals/:challengeId` | 是 | 200 | `{decision:"allow"\|"deny"}` 或 `{optionId}` | `GatewaySession`；仅活动 ACP 会话 |
 | `POST /v1/sessions/:id/cancel` | 是 | 200 | — | `GatewaySession` |
 | `POST /v1/sessions/:id/files/read` | 是 | 200 | `{path}` | 二进制 `SessionFile`；只允许该会话 cwd 内文件 |
 
@@ -335,6 +337,8 @@ data: <完整 SessionEvent JSON>
 | `REMOTE_AGENT_ROOTS` | 当前 cwd | macOS 用 `:` 分隔；新建/续接任务的执行授权边界，不影响历史可见性 |
 | `REMOTE_AGENT_ALLOWED_ORIGINS` | `http://localhost:4173,http://127.0.0.1:4173,capacitor://localhost,https://localhost` | 逗号分隔精确 origin |
 | `REMOTE_AGENT_PAIRING_TTL_MS` | `300000` | 配对码 TTL，正整数 |
+| `REMOTE_AGENT_CLAUDE_TRANSPORT` | `acp` | Claude 执行通道：`acp`（默认，可手机审批）或 `cli`（短进程回退） |
+| `REMOTE_AGENT_CLAUDE_ACP_COMMAND` | `npx -y @agentclientprotocol/claude-agent-acp@0.89.1` | 覆盖 ACP Agent 启动命令（测试可注入 mock） |
 | `REMOTE_AGENT_MAX_BODY_BYTES` | `1048576` | HTTP body 上限，正整数 |
 | `REMOTE_AGENT_CURSOR_HISTORY_DIR` | `~/.cursor/acp-sessions` | Cursor 旧历史 |
 | `REMOTE_AGENT_CURSOR_CHATS_HISTORY_DIR` | `~/.cursor/chats` | Cursor chats store（用于可续接标记） |

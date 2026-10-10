@@ -78,7 +78,7 @@ Remote Agent 让已授权的移动设备在不持有 Agent API 密钥、不接�
 | `FILE-001` | 查看会话生成的本机文件 | 已实现 | 会话正文中的相对路径、绝对路径和 `file://` Markdown 文件链接由移动端改走已认证网关；网关以会话 cwd 为唯一根目录做 realpath 校验，只返回普通文件，拒绝目录、符号链接逃逸、缺失文件和超过 20 MiB 的文件。图片可嵌入正文并全屏查看，PDF/文本在应用内预览，其他类型提供下载；HTTP(S)、锚点和邮件链接仍按外部链接处理 |
 | `STREAM-001` | 持久化事件与增量拉取 | 已实现 | 事件写入 SQLite，使用全局递增 `seq`；JSON 接口支持 `after` 读取，默认单次最多 500 条、内部上限 2,000 条 |
 | `STREAM-002` | SSE 实时事件 | 已实现 | 网关支持历史补发、事件 id、订阅和 15 秒 heartbeat；移动端网关会话详情优先消费 SSE（`Last-Event-ID` 重连、按 `seq` 去重），连接不可用时回退 JSON 轮询 |
-| `APPROVAL-001` | 工具审批展示与处理 | 界面占位 | parser 可识别 approval 类事件，状态变为 `waiting_approval`，移动端提示“等待 Mac 端确认”；没有 challenge/resolve API，也不能在手机批准或拒绝 |
+| `APPROVAL-001` | 工具审批展示与处理 | 受限实现 | Claude **ACP** 路径：`session/request_permission` → `approval`（含 `challengeId`/`resolvable`/`summary`）→ 手机 `POST .../approvals/:challengeId`；手机「批准」**仅**映射 `allow_once`（无则拒绝，从不发 `allow_always`）；空 options 网关 fail-closed；`ask`/`plan` 等手机；`auto` 按工具名白名单自动 `allow_once` 并发审计事件；`full` 仅自动选明确的 `allow_once`（不盲选 `options[0]`）；超时发 `expired` 置灰卡片。短进程 CLI 不可手机 resolve；`REMOTE_AGENT_CLAUDE_TRANSPORT=cli` 可回退 |
 
 ### 3.4 原生历史
 
@@ -214,8 +214,8 @@ Remote Agent 让已授权的移动设备在不持有 Agent API 密钥、不接�
 
 1. 用长期 Agent 协议替代短进程 CLI，并实现结构化 approval challenge/resolve。  
    - **Phase 0（已完成）**：调研文档 [`architecture/acp-phase0.md`](../architecture/acp-phase0.md)——各 Agent ACP 启用方式、TS SDK 可行性、事件映射、`REMOTE_AGENT_ROOTS` 安全边界、Phase 1 单 Agent PoC 建议（**Claude + `@agentclientprotocol/claude-agent-acp`**，失败回退现有 `claude` 短进程 adapter）。  
-   - **Phase 1（未开始）**：网关内最小 ACP Client，单 Agent PoC，事件写入现有 SQLite/SSE。  
-   - **Phase 2（未开始）**：多 Agent、手机 approval resolve、旧 CLI 降级为回退路径。
+   - **Phase 1（进行中 / Claude PoC）**：网关 ACP Client + `claude-agent-acp`；事件写入现有 SQLite/SSE；失败可回退 CLI。  
+   - **Phase 2（部分提前）**：Claude 路径已支持手机 approval resolve；多 Agent ACP 与 Cursor 阻塞扩展仍未做。
 
 2. 接入 APNs/FCM、深链、后台恢复和锁屏隐私（含 `SETTING-002` 的真实通知行为）。
 3. 完成生产 TLS、审计脱敏、依赖扫描、正式签名和密钥轮换。
