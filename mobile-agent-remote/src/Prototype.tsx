@@ -982,7 +982,7 @@ export default function Prototype() {
       if (selectedSessionRef.current && sessionIdentity(selectedSessionRef.current) === sessionIdentity(session)) {
         closeSessionDetail();
       }
-      setNotice("已存档，可在「已存档」中恢复");
+      setNotice("已存档：网页与本机 Agent 侧栏都会隐藏");
     } catch {
       setNotice("存档失败，请稍后重试");
     }
@@ -2006,7 +2006,7 @@ export default function Prototype() {
                       ? "首次连接需要从 Mac 读取 Cursor、Claude 和 Codex 历史。"
                       : remoteOnline
                       ? sessionView === "archived"
-                        ? "存档仅在本手机隐藏会话，不会删除 Mac 上的历史"
+                        ? "已存档会话会从本机 Codex/Cursor 侧栏隐藏；可在这里恢复"
                         : "换一个关键词或 Agent 试试"
                       : "不会再显示模拟数据；配对成功后自动同步 Cursor、Claude 和 Codex。"}
                   </span>
