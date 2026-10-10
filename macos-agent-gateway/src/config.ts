@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { resolve } from "node:path";
+import { resolve, win32 } from "node:path";
 import { getDefaultHistoryDirs } from "./platform.js";
 
 /** Comma-separated default for `REMOTE_AGENT_ALLOWED_ORIGINS` (Vite dev client on localhost and 127.0.0.1). */
@@ -55,13 +55,39 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): GatewayConfig 
   };
 }
 
-/** Split `REMOTE_AGENT_ROOTS` on `:` or `;` so LaunchAgent / shell can list multiple explicit roots. */
-export function parseRemoteAgentRoots(raw: string): string[] {
+/**
+ * Split `REMOTE_AGENT_ROOTS` into absolute roots.
+ * - Windows: only `;` separates multiple roots (drive letters keep their `:`).
+ * - POSIX: `:` or `;` may separate multiple roots.
+ */
+export function parseRemoteAgentRoots(
+  raw: string,
+  platform: NodeJS.Platform = process.platform,
+): string[] {
+  const segments = platform === "win32"
+    ? splitWindowsRemoteAgentRoots(raw)
+    : splitPosixRemoteAgentRoots(raw);
+  const resolveRoot = platform === "win32"
+    ? (item: string) => win32.resolve(item)
+    : (item: string) => resolve(item);
+  return segments.map(resolveRoot);
+}
+
+function splitPosixRemoteAgentRoots(raw: string): string[] {
   return raw
     .split(/[:;]/)
     .map((item) => item.trim())
-    .filter(Boolean)
-    .map((item) => resolve(item));
+    .filter(Boolean);
+}
+
+function splitWindowsRemoteAgentRoots(raw: string): string[] {
+  const trimmed = raw.trim();
+  if (!trimmed) return [];
+  if (!trimmed.includes(";")) return [trimmed];
+  return trimmed
+    .split(";")
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function parseInteger(raw: string | undefined, fallback: number): number {
