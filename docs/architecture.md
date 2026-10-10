@@ -39,7 +39,7 @@ macOS 网关负责认证、目录白名单、统一会话模型、Agent 进程�
 - 项目标识：会话可附带 `projectId / projectName`；网关优先识别 Git 根目录，移动端用其跨 Agent 分组
 - 历史消息：统一为 `id / role / text / createdAt`
 
-`ask` 在当前非交互式 CLI 适配器中采用受限执行：Cursor/Claude 进入 plan 类模式，Codex 使用只读沙箱。`full` 映射为 Cursor `--force`、Claude `bypassPermissions`、Codex `danger-full-access`，仍受白名单 cwd 约束。完整的“手机批准单个工具调用后继续”需要下一阶段接入各 Agent 的长期运行协议。
+`ask` 在短进程 CLI 适配器中采用受限执行：Cursor/Claude 进入 plan 类模式，Codex 使用只读沙箱。`full` 映射为 Cursor `--force`、Claude `bypassPermissions`、Codex `danger-full-access`，仍受白名单 cwd 约束。Claude **ACP** 路径已支持手机批准/拒绝单个工具调用（见 `APPROVAL-001`）；Cursor/Codex 仍待 ACP 接入。
 
 ## HTTP API
 

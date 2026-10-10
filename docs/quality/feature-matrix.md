@@ -50,7 +50,7 @@
 | `FILE-001` | 已实现 | `session-files.ts`、会话/原生历史 file read 路由、Markdown 本机链接桥接、Blob 预览页 | `session-files.test.ts`：相对/绝对/`file://`、符号链接逃逸、目录、缺失、超限；`gateway.test.ts`：认证二进制响应；`product-flow.spec.ts`：内联图片、文本预览、缺失错误与返回 | P | PNG/JPEG/PDF/文本/未知二进制；Android/iOS 下载行为、20 MiB 边界、断网重试、TCC 错误 |
 | `STREAM-001` | 已实现 | `GatewayStore.addEvent/listEvents`、JSON events route | `gateway.test.ts`：持久化事件和 JSON 获取 | A | `after` 游标、升序、上限、坏 payload 容错、重启后可读 |
 | `STREAM-002` | 已实现 | `openEventStream`、`EventHub`、`gateway-session-stream.ts` | `gateway.test.ts`：SSE 建连/首块；`gateway-session-stream.test.mjs`：SSE 解析；`product-flow.spec.ts`：详情 SSE 建连 | P | after/Last-Event-ID 补发、新事件、15s heartbeat、关闭清理、轮询回退 |
-| `APPROVAL-001` | 界面占位 | parser approval 分支、`GatewayService.record`、移动端 approval 文案 | 无 approval 专项测试 | — | 只能展示等待 Mac，不出现手机批准/拒绝入口，不把 ask 描述为完整审批 |
+| `APPROVAL-001` | 受限实现 | Claude ACP adapter、`POST .../approvals/:challengeId`、移动端批准/拒绝卡片、`acp-approval.test.ts` | `acp-approval.test.ts`：mock ACP 权限回合 + 手机 allow 闭环 | P | Claude ask 模式可在手机批准/拒绝；CLI 回退仍无手机入口；Cursor/Codex ACP 未接 |
 
 ## 5. 原生历史
 

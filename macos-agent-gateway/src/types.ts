@@ -122,9 +122,13 @@ export interface AgentUsageProvider {
   list(): Promise<AgentUsage[]>;
 }
 
+export type ApprovalDecision = "allow" | "deny" | { optionId: string };
+
 export type RunningAgent = {
   done: Promise<void>;
   cancel: () => void;
+  /** Resolve a pending ACP permission challenge from the phone. */
+  resolveApproval?: (challengeId: string, decision: ApprovalDecision) => boolean;
 };
 
 export type AdapterLaunchRequest = {

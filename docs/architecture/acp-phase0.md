@@ -1,7 +1,7 @@
 # ACP Phase 0 调研结论（Issue #1）
 
-> 状态：Phase 0 闭环文档（仅调研，不含实现）  
-> 基线日期：2026-10-09  
+> 状态：Phase 0 闭环文档；**Phase 1 Claude PoC + 手机 approval resolve 已在代码落地（见 APPROVAL-001）**  
+> 基线日期：2026-10-09（实现跟进：2026-10-10）  
 > 关联：[GitHub Issue #1](https://github.com/kipkcl2016/remote-agent/issues/1)、[`functional-spec.md` §7](../product/functional-spec.md#7-已知缺口与演进顺序)、[`architecture.md`](../architecture.md)、[`security.md`](../security.md)
 
 ## 0. 术语澄清

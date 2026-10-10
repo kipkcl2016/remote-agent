@@ -359,6 +359,35 @@ export function createGatewayHttpServer(options: GatewayHttpOptions): Server {
         return;
       }
 
+      const approvalMatch = requestUrl.pathname.match(
+        /^\/v1\/sessions\/([^/]+)\/approvals\/([^/]+)$/,
+      );
+      if (request.method === "POST" && approvalMatch?.[1] && approvalMatch[2]) {
+        const body = await readJson(request, config.maxBodyBytes);
+        const challengeId = decodeURIComponent(approvalMatch[2]);
+        const decision = readApprovalDecision(body);
+        try {
+          const session = service.resolveSessionApproval(
+            decodeURIComponent(approvalMatch[1]),
+            challengeId,
+            decision,
+          );
+          sendJson(response, 200, { data: session });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Approval resolve failed";
+          if (message.includes("not found") || message.includes("already resolved")) {
+            sendError(response, 404, message);
+          } else if (message.includes("not currently running") || message.includes("does not support")) {
+            sendError(response, 409, message);
+          } else if (message.includes("Invalid")) {
+            sendError(response, 400, message);
+          } else {
+            throw error;
+          }
+        }
+        return;
+      }
+
       const cancelMatch = requestUrl.pathname.match(/^\/v1\/sessions\/([^/]+)\/cancel$/);
       if (request.method === "POST" && cancelMatch?.[1]) {
         sendJson(response, 200, { data: service.cancelSession(decodeURIComponent(cancelMatch[1])) });
@@ -382,6 +411,18 @@ export function createGatewayHttpServer(options: GatewayHttpOptions): Server {
   server.maxConnections = 100; // Limit concurrent connections
 
   return server;
+}
+
+
+function readApprovalDecision(body: Record<string, unknown>): "allow" | "deny" | { optionId: string } {
+  if (typeof body.optionId === "string" && body.optionId.trim()) {
+    const optionId = body.optionId.trim();
+    if (optionId.length > 200) throw new ClientError(400, "optionId is too long");
+    return { optionId };
+  }
+  const decision = body.decision;
+  if (decision === "allow" || decision === "deny") return decision;
+  throw new ClientError(400, "decision must be allow or deny, or provide optionId");
 }
 
 class ClientError extends Error {

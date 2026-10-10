@@ -1,5 +1,5 @@
 import type { AgentAdapter, AgentAvailability, AgentKind } from "./types.js";
-import { createClaudeAdapter } from "./adapters/claude.js";
+import { createClaudeAcpAdapter } from "./adapters/claude-acp.js";
 import { createCodexAdapter } from "./adapters/codex.js";
 import { createCursorAdapter } from "./adapters/cursor.js";
 import { createWorkbuddyAdapter } from "./adapters/workbuddy.js";
@@ -21,5 +21,5 @@ export class AgentRegistry {
 }
 
 function defaultAdapters(): AgentAdapter[] {
-  return [createCursorAdapter(), createClaudeAdapter(), createCodexAdapter(), createWorkbuddyAdapter()];
+  return [createCursorAdapter(), createClaudeAcpAdapter(), createCodexAdapter(), createWorkbuddyAdapter()];
 }

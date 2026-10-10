@@ -17,6 +17,7 @@ import type {
   AdapterEvent,
   AgentAvailability,
   AgentKind,
+  ApprovalDecision,
   GatewaySession,
   RunningAgent,
   SessionEvent,
@@ -176,6 +177,38 @@ export class GatewayService {
     running.cancel();
     this.store.updateSession(id, { status: "cancelled", error: null });
     this.record(id, { type: "status", payload: { status: "cancelled" } });
+    return this.getSession(id) ?? this.#withProject(session);
+  }
+
+  /**
+   * Resolve a pending ACP tool-permission challenge from the phone.
+   * Returns the updated session when the challenge was accepted by the active adapter.
+   */
+  resolveSessionApproval(
+    id: string,
+    challengeId: string,
+    decision: ApprovalDecision,
+  ): GatewaySession {
+    const session = this.store.getSession(id);
+    if (!session) throw new Error("Session not found");
+    const running = this.#active.get(id);
+    if (!running) throw new Error("Session is not currently running");
+    if (!running.resolveApproval) {
+      throw new Error("This session does not support mobile approval resolve");
+    }
+    if (!challengeId || challengeId.length > 128) {
+      throw new Error("Invalid approval challenge id");
+    }
+    const ok = running.resolveApproval(challengeId, decision);
+    if (!ok) throw new Error("Approval challenge not found or already resolved");
+    this.record(id, {
+      type: "status",
+      payload: {
+        status: "running",
+        approvalDecision: typeof decision === "string" ? decision : decision.optionId,
+        challengeId,
+      },
+    });
     return this.getSession(id) ?? this.#withProject(session);
   }
 

@@ -116,7 +116,10 @@ type DetailMessage = {
   id: string;
   role: "user" | "assistant";
   text: string;
-  kind?: "message" | "stream" | "tool" | "diagnostic" | "error";
+  kind?: "message" | "stream" | "tool" | "diagnostic" | "error" | "approval";
+  approvalChallengeId?: string;
+  approvalResolvable?: boolean;
+  approvalResolved?: boolean;
 };
 
 type DetailTurn = {
@@ -1578,6 +1581,68 @@ export default function Prototype() {
     }
   };
 
+  const resolveApprovalChallenge = async (
+    challengeId: string,
+    decision: "allow" | "deny",
+  ) => {
+    const currentSession = selectedSession;
+    if (!currentSession || currentSession.source !== "gateway") return;
+    if (!remoteOnline || !gatewayToken) return;
+    setDetailError(null);
+    setDetailMessages((current) => current.map((message) => (
+      message.approvalChallengeId === challengeId
+        ? {
+          ...message,
+          approvalResolvable: false,
+          approvalResolved: true,
+          text: `${message.text.replace(/\n已处理$/, "")}\n处理中…`,
+        }
+        : message
+    )));
+    try {
+      const remoteSession = await gatewayRequest<GatewaySessionApi>(
+        gatewayUrl,
+        `/v1/sessions/${encodeURIComponent(currentSession.id)}/approvals/${encodeURIComponent(challengeId)}`,
+        {
+          method: "POST",
+          token: gatewayToken,
+          body: { decision },
+        },
+      );
+      const mapped = mapGatewaySession(remoteSession);
+      const viewedSession = { ...mapped, unread: false };
+      markSessionRead(normalizeGatewayUrl(gatewayUrl), viewedSession);
+      selectedSessionRef.current = viewedSession;
+      setSelectedSession(viewedSession);
+      setSessions((current) => upsertSessionAtFront(current, viewedSession));
+      setDetailMessages((current) => current.map((message) => (
+        message.approvalChallengeId === challengeId
+          ? {
+            ...message,
+            approvalResolvable: false,
+            approvalResolved: true,
+            text: `${message.text.replace(/\n处理中…$/, "").replace(/\n已处理$/, "")}\n已${decision === "allow" ? "批准" : "拒绝"}`,
+          }
+          : message
+      )));
+      setDetailRefreshToken((current) => current + 1);
+      setNotice(decision === "allow" ? "已批准工具调用" : "已拒绝工具调用");
+    } catch (error) {
+      setDetailMessages((current) => current.map((message) => (
+        message.approvalChallengeId === challengeId
+          ? {
+            ...message,
+            approvalResolvable: true,
+            approvalResolved: false,
+            text: message.text.replace(/\n处理中…$/, "").replace(/\n已处理$/, ""),
+          }
+          : message
+      )));
+      setDetailError(errorMessage(error));
+    }
+  };
+
+
   const pairDevice = async () => {
     const url = normalizeGatewayUrl(pairingUrl);
     if (!url) {
@@ -2173,6 +2238,11 @@ export default function Prototype() {
                         agent={selectedSession.agent}
                         fileBridge={sessionFileBridge}
                         pinnedSource={message.role === "user" && message.id === pinnedQuestionId}
+                        onResolveApproval={
+                          message.kind === "approval" && message.approvalResolvable
+                            ? resolveApprovalChallenge
+                            : undefined
+                        }
                       />
                     ))}
                   </div>
@@ -2833,12 +2903,14 @@ const DetailMessageCard = memo(function DetailMessageCard({
   pinnedCopy = false,
   pinnedSource = false,
   fileBridge,
+  onResolveApproval,
 }: {
   message: DetailMessage;
   agent: AgentName;
   pinnedCopy?: false | "current" | "previous";
   pinnedSource?: boolean;
   fileBridge?: SessionFileBridge;
+  onResolveApproval?: (challengeId: string, decision: "allow" | "deny") => void;
 }) {
   return (
     <div
@@ -2849,11 +2921,13 @@ const DetailMessageCard = memo(function DetailMessageCard({
         ? pinnedCopy === "current"
           ? "pinned-question-card"
           : pinnedCopy === "previous" ? undefined : `user-question-${message.id}`
-        : undefined}
+        : message.kind === "approval"
+          ? `approval-card-${message.approvalChallengeId ?? message.id}`
+          : undefined}
       data-question-id={message.role === "user" ? message.id : undefined}
     >
       <span className="detail-avatar">
-        {message.kind === "tool"
+        {message.kind === "tool" || message.kind === "approval"
           ? <TbTerminal2 aria-hidden="true" />
           : message.role === "assistant"
             ? <AgentIcon agent={agent} />
@@ -2864,6 +2938,30 @@ const DetailMessageCard = memo(function DetailMessageCard({
           <summary>Agent 诊断日志</summary>
           <p>{message.text}</p>
         </details>
+      ) : message.kind === "approval" ? (
+        <div className="detail-approval">
+          <p>{message.text}</p>
+          {message.approvalResolvable && message.approvalChallengeId && onResolveApproval ? (
+            <div className="detail-approval-actions">
+              <button
+                type="button"
+                className="detail-approval-deny"
+                data-testid={`approval-deny-${message.approvalChallengeId}`}
+                onClick={() => onResolveApproval(message.approvalChallengeId!, "deny")}
+              >
+                拒绝
+              </button>
+              <button
+                type="button"
+                className="detail-approval-allow"
+                data-testid={`approval-allow-${message.approvalChallengeId}`}
+                onClick={() => onResolveApproval(message.approvalChallengeId!, "allow")}
+              >
+                批准
+              </button>
+            </div>
+          ) : null}
+        </div>
       ) : message.kind === "tool" || message.kind === "error" ? (
         <p>{message.text}</p>
       ) : (
@@ -3464,7 +3562,10 @@ function sameDetailMessages(left: DetailMessage[], right: DetailMessage[]): bool
       && message.id === other.id
       && message.role === other.role
       && message.text === other.text
-      && message.kind === other.kind;
+      && message.kind === other.kind
+      && message.approvalChallengeId === other.approvalChallengeId
+      && message.approvalResolvable === other.approvalResolvable
+      && message.approvalResolved === other.approvalResolved;
   });
 }
 
@@ -3512,12 +3613,47 @@ function appendGatewayEvents(
     }
 
     if (event.type === "approval") {
+      const challengeId = typeof event.payload.challengeId === "string"
+        ? event.payload.challengeId
+        : undefined;
+      const resolvable = event.payload.resolvable === true && Boolean(challengeId);
+      const title = typeof event.payload.title === "string"
+        ? event.payload.title
+        : typeof event.payload.name === "string"
+          ? event.payload.name
+          : "工具调用";
+      const kind = typeof event.payload.kind === "string" ? event.payload.kind : undefined;
       next.push({
         id: `event-${event.seq}`,
         role: "assistant",
-        kind: "tool",
-        text: "Agent 正在等待 Mac 端确认操作权限。",
+        kind: "approval",
+        approvalChallengeId: challengeId,
+        approvalResolvable: resolvable,
+        text: resolvable
+          ? `需要手机确认：${title}${kind ? `（${kind}）` : ""}`
+          : "Agent 正在等待 Mac 端确认操作权限。",
       });
+      continue;
+    }
+
+    if (
+      event.type === "status"
+      && typeof event.payload.approvalResolved === "string"
+    ) {
+      const challengeId = event.payload.approvalResolved;
+      for (let index = next.length - 1; index >= 0; index -= 1) {
+        const message = next[index];
+        if (message?.kind === "approval" && message.approvalChallengeId === challengeId) {
+          next[index] = {
+            ...message,
+            approvalResolvable: false,
+            approvalResolved: true,
+            text: `${message.text}
+已处理`,
+          };
+          break;
+        }
+      }
       continue;
     }
 
