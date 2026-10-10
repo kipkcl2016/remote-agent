@@ -253,8 +253,8 @@ function scanCodex(root: string): NativeHistorySession[] {
             cwd ||= readString(payload.cwd) ?? "";
             createdAt ||= readIsoDate(payload.timestamp) ?? readIsoDate(row.timestamp);
           }
-          if (row.type === "event_msg" && payload.type === "user_message" && !title) {
-            title = readString(payload.message) ?? "";
+          if (!title) {
+            title = extractCodexUserTitle(row, payload) ?? "";
           }
           if (cwd && title) break;
         }
@@ -534,19 +534,93 @@ function readClaudeMessages(path: string): NativeHistoryMessage[] {
 
 function readCodexMessages(path: string): NativeHistoryMessage[] {
   return readJsonLinesWindow(path).flatMap((row, index) => {
-    if (row.type !== "event_msg") return [];
-    const payload = readRecord(row.payload);
-    if (!payload || (payload.type !== "user_message" && payload.type !== "agent_message")) return [];
-    const text = cleanMessageText(readString(payload.message) ?? "");
-    if (!text) return [];
-    const createdAt = readIsoDate(row.timestamp);
-    return [{
-      id: readString(payload.client_id) ?? `codex-${index}`,
-      role: payload.type === "user_message" ? "user" as const : "assistant" as const,
-      text,
-      ...(createdAt ? { createdAt } : {}),
-    }];
+    const message = parseCodexHistoryMessage(row, index);
+    return message ? [message] : [];
   });
+}
+
+function parseCodexHistoryMessage(
+  row: Record<string, unknown>,
+  index: number,
+): NativeHistoryMessage | undefined {
+  if (row.type === "event_msg") return parseCodexEventMsgMessage(row, index);
+  if (row.type === "response_item") return parseCodexResponseItemMessage(row, index);
+  return undefined;
+}
+
+function parseCodexEventMsgMessage(
+  row: Record<string, unknown>,
+  index: number,
+): NativeHistoryMessage | undefined {
+  const payload = readRecord(row.payload);
+  if (!payload || (payload.type !== "user_message" && payload.type !== "agent_message")) return undefined;
+  const role = payload.type === "user_message" ? "user" as const : "assistant" as const;
+  const raw = typeof payload.message === "string"
+    ? payload.message
+    : readMessageContent(payload.message);
+  const text = cleanCodexVisibleText(raw, role);
+  if (!text) return undefined;
+  const createdAt = readIsoDate(row.timestamp);
+  return {
+    id: readString(payload.client_id) ?? `codex-${index}`,
+    role,
+    text,
+    ...(createdAt ? { createdAt } : {}),
+  };
+}
+
+function parseCodexResponseItemMessage(
+  row: Record<string, unknown>,
+  index: number,
+): NativeHistoryMessage | undefined {
+  const payload = readRecord(row.payload);
+  if (!payload || payload.type !== "message") return undefined;
+  const role = readString(payload.role);
+  if (role !== "user" && role !== "assistant") return undefined;
+  const text = cleanCodexVisibleText(readMessageContent(payload.content), role);
+  if (!text) return undefined;
+  const createdAt = readIsoDate(row.timestamp) ?? readIsoDate(payload.timestamp);
+  return {
+    id: readString(payload.id) ?? readString(row.id) ?? `codex-${index}`,
+    role,
+    text,
+    ...(createdAt ? { createdAt } : {}),
+  };
+}
+
+function extractCodexUserTitle(
+  row: Record<string, unknown>,
+  payload: Record<string, unknown>,
+): string | undefined {
+  if (row.type === "event_msg" && payload.type === "user_message") {
+    const raw = typeof payload.message === "string"
+      ? payload.message
+      : readMessageContent(payload.message);
+    return readString(cleanCodexVisibleText(raw, "user"));
+  }
+  if (row.type === "response_item" && payload.type === "message" && payload.role === "user") {
+    return readString(cleanCodexVisibleText(readMessageContent(payload.content), "user"));
+  }
+  return undefined;
+}
+
+function cleanCodexVisibleText(value: string, role: "user" | "assistant"): string {
+  const cleaned = cleanMessageText(stripCodexToolWrappers(value));
+  if (!cleaned || shouldSkipCodexVisibleText(cleaned, role)) return "";
+  return cleaned;
+}
+
+function stripCodexToolWrappers(value: string): string {
+  return value
+    .replace(/<tool[_-]?call\b[^>]*>[\s\S]*?<\/tool[_-]?call>/gi, " ")
+    .replace(/<function[_-]?call\b[^>]*>[\s\S]*?<\/function[_-]?call>/gi, " ")
+    .trim();
+}
+
+function shouldSkipCodexVisibleText(text: string, role: "user" | "assistant"): boolean {
+  if (role === "user" && /^#\s*AGENTS\.md\b/im.test(text) && text.length > 1_500) return true;
+  if (role === "user" && /^<\s*INSTRUCTIONS\b/i.test(text)) return true;
+  return false;
 }
 
 function readMessageContent(value: unknown): string {
@@ -556,6 +630,8 @@ function readMessageContent(value: unknown): string {
     const record = readRecord(item);
     if (!record) return [];
     if (record.type === "text" && typeof record.text === "string") return [record.text];
+    if (record.type === "input_text" && typeof record.text === "string") return [record.text];
+    if (record.type === "output_text" && typeof record.text === "string") return [record.text];
     if (record.type === "thinking" && typeof record.thinking === "string") return [record.thinking];
     return [];
   }).join("\n");
