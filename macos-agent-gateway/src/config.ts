@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { resolve, win32 } from "node:path";
+import { posix, resolve, win32 } from "node:path";
 import { getDefaultHistoryDirs } from "./platform.js";
 
 /** Comma-separated default for `REMOTE_AGENT_ALLOWED_ORIGINS` (Vite dev client on localhost and 127.0.0.1). */
@@ -69,7 +69,7 @@ export function parseRemoteAgentRoots(
     : splitPosixRemoteAgentRoots(raw);
   const resolveRoot = platform === "win32"
     ? (item: string) => win32.resolve(item)
-    : (item: string) => resolve(item);
+    : (item: string) => posix.resolve(item);
   return segments.map(resolveRoot);
 }
 

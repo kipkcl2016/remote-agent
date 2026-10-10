@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { win32 } from "node:path";
 import test from "node:test";
 import { loadConfig, parseRemoteAgentRoots } from "../src/config.js";
 
@@ -33,6 +34,16 @@ test("parseRemoteAgentRoots does not split Windows drive-letter colons", () => {
 });
 
 test("loadConfig deduplicates REMOTE_AGENT_ROOTS entries", () => {
+  if (process.platform === "win32") {
+    const config = loadConfig({
+      REMOTE_AGENT_ROOTS: "C:\\tmp\\a;C:\\tmp\\a;C:\\tmp\\b",
+    });
+    assert.deepEqual(config.allowedRoots, [
+      win32.resolve("C:\\tmp\\a"),
+      win32.resolve("C:\\tmp\\b"),
+    ]);
+    return;
+  }
   const config = loadConfig({
     REMOTE_AGENT_ROOTS: "/tmp/a:/tmp/a;/tmp/b",
   });
