@@ -126,6 +126,7 @@ function install(roots: string[]): void {
   cpSync(builtRuntimeDir, paths.runtimeDir, { recursive: true, force: true });
   copyFileSync(resolve(projectRoot, "package.json"), resolve(paths.dataDir, "package.json"));
   const entryPath = resolve(paths.runtimeDir, "index.js");
+  const allowedOrigins = process.env.REMOTE_AGENT_ALLOWED_ORIGINS?.trim();
   const plist = buildLaunchAgentPlist({
     nodePath: process.execPath,
     entryPath,
@@ -134,7 +135,7 @@ function install(roots: string[]): void {
     stdoutPath: resolve(paths.logDir, "gateway.log"),
     stderrPath: resolve(paths.logDir, "gateway.error.log"),
     path: process.env.PATH ?? "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
-    allowedOrigins: process.env.REMOTE_AGENT_ALLOWED_ORIGINS,
+    ...(allowedOrigins ? { allowedOrigins } : {}),
   });
   writeFileSync(paths.plistPath, plist, { encoding: "utf8", mode: 0o600 });
   chmodSync(paths.plistPath, 0o600);
