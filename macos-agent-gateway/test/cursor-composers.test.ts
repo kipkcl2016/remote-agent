@@ -110,6 +110,8 @@ test("Cursor history prefers IDE composerHeaders titles and skips archived", asy
     cursorTranscripts: join(root, "cursor-transcripts"),
     claude: join(root, "claude"),
     codex: join(root, "codex"),
+    workbuddyDb: join(root, "workbuddy.db"),
+    workbuddyProjects: join(root, "workbuddy-projects"),
   };
 
   try {
@@ -196,6 +198,8 @@ test("Cursor 3.0 composer.composerHeaders ItemTable index loads transcript messa
     cursorTranscripts: join(root, "cursor-transcripts"),
     claude: join(root, "claude"),
     codex: join(root, "codex"),
+    workbuddyDb: join(root, "workbuddy.db"),
+    workbuddyProjects: join(root, "workbuddy-projects"),
   };
 
   try {

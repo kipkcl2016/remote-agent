@@ -129,6 +129,8 @@ test("session archive HTTP rejects running sessions and scopes by bearer device"
     cursorTranscripts: join(root, "cursor-transcripts"),
     claude: join(root, "claude"),
     codex: join(root, "codex"),
+    workbuddyDb: join(root, "workbuddy.db"),
+    workbuddyProjects: join(root, "workbuddy-projects"),
   };
   const history = new NativeHistoryService(historyDirs, [root]);
   const server = createGatewayHttpServer({

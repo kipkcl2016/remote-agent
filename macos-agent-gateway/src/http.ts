@@ -198,7 +198,7 @@ export function createGatewayHttpServer(options: GatewayHttpOptions): Server {
       }
 
       const nativeResumeMatch = requestUrl.pathname.match(
-        /^\/v1\/history\/(cursor|claude|codex)\/([^/]+)\/resume$/,
+        /^\/v1\/history\/(cursor|claude|codex|workbuddy)\/([^/]+)\/resume$/,
       );
       if (request.method === "POST" && nativeResumeMatch?.[1] && nativeResumeMatch[2]) {
         const agent = nativeResumeMatch[1];
@@ -224,7 +224,7 @@ export function createGatewayHttpServer(options: GatewayHttpOptions): Server {
       }
 
       const nativeSnapshotMatch = requestUrl.pathname.match(
-        /^\/v1\/history\/(cursor|claude|codex)\/([^/]+)\/snapshot$/,
+        /^\/v1\/history\/(cursor|claude|codex|workbuddy)\/([^/]+)\/snapshot$/,
       );
       if (request.method === "GET" && nativeSnapshotMatch?.[1] && nativeSnapshotMatch[2]) {
         const agent = nativeSnapshotMatch[1];
@@ -238,7 +238,7 @@ export function createGatewayHttpServer(options: GatewayHttpOptions): Server {
       }
 
       const nativeMessagesMatch = requestUrl.pathname.match(
-        /^\/v1\/history\/(cursor|claude|codex)\/([^/]+)\/messages$/,
+        /^\/v1\/history\/(cursor|claude|codex|workbuddy)\/([^/]+)\/messages$/,
       );
       if (request.method === "GET" && nativeMessagesMatch?.[1] && nativeMessagesMatch[2]) {
         const agent = nativeMessagesMatch[1];
@@ -252,7 +252,7 @@ export function createGatewayHttpServer(options: GatewayHttpOptions): Server {
       }
 
       const nativeFileMatch = requestUrl.pathname.match(
-        /^\/v1\/history\/(cursor|claude|codex)\/([^/]+)\/files\/read$/,
+        /^\/v1\/history\/(cursor|claude|codex|workbuddy)\/([^/]+)\/files\/read$/,
       );
       if (request.method === "POST" && nativeFileMatch?.[1] && nativeFileMatch[2]) {
         const agent = nativeFileMatch[1];

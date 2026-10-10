@@ -2580,3 +2580,16 @@ button.markdown-remote-image {
     transform: none;
   }
 }
+
+.agent-icon.agent-workbuddy .agent-workbuddy-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1em;
+  height: 1em;
+  border-radius: 0.25em;
+  font-size: 0.72em;
+  font-weight: 700;
+  background: #2f6fed;
+  color: #fff;
+}

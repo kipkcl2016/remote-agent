@@ -69,7 +69,7 @@ import {
   type SessionArchiveEntry,
 } from "./session-archive.js";
 
-type AgentName = "Cursor" | "Claude" | "Codex";
+type AgentName = "Cursor" | "Claude" | "Codex" | "WorkBuddy";
 type SessionStatus = "running" | "attention" | "done" | "cancelled" | "failed";
 type SessionView = "recent" | "projects";
 type SessionSyncState = "idle" | "loading" | "refreshing" | "fresh" | "stale" | "error";
@@ -151,7 +151,7 @@ type SessionFileBridge = {
   open: (reference: string) => void;
 };
 
-const filters: Array<"全部" | AgentName> = ["全部", "Cursor", "Claude", "Codex"];
+const filters: Array<"全部" | AgentName> = ["全部", "Cursor", "Claude", "Codex", "WorkBuddy"];
 const SESSION_DISPLAY_LIMIT = 20;
 const PROJECT_SESSION_LIMIT = 20;
 const ACTIVE_SESSION_POLL_MS = 1_000;
@@ -724,7 +724,7 @@ export default function Prototype() {
   }, [agentAvailability, agentAvailabilityByName]);
 
   const firstInstalledAgent = useCallback((): AgentName | null => {
-    for (const agent of ["Cursor", "Claude", "Codex"] as AgentName[]) {
+    for (const agent of ["Cursor", "Claude", "Codex", "WorkBuddy"] as AgentName[]) {
       if (isAgentInstalled(agent)) return agent;
     }
     return null;
@@ -2030,7 +2030,7 @@ export default function Prototype() {
           ) : null}
           <span className="field-caption">Agent</span>
           <div className="sheet-agent-picker" aria-label="选择 Agent">
-            {(["Cursor", "Claude", "Codex"] as AgentName[]).map((agent) => {
+            {(["Cursor", "Claude", "Codex", "WorkBuddy"] as AgentName[]).map((agent) => {
               const installed = isAgentInstalled(agent);
               const caption = agentInstallCaption(agent);
               return (
@@ -2927,6 +2927,8 @@ function AgentIcon({ agent, framed = false }: { agent: AgentName; framed?: boole
       <SiCursor aria-hidden="true" />
     ) : agent === "Claude" ? (
       <SiClaude aria-hidden="true" />
+    ) : agent === "WorkBuddy" ? (
+      <span className="agent-workbuddy-mark" aria-hidden="true">W</span>
     ) : (
       <TbBrandOpenai aria-hidden="true" />
     );
@@ -2991,7 +2993,7 @@ function SettingToggle({
   );
 }
 
-type AgentKindApi = "cursor" | "claude" | "codex";
+type AgentKindApi = "cursor" | "claude" | "codex" | "workbuddy";
 
 type AgentAvailabilityApi = {
   kind: AgentKindApi;
@@ -3573,16 +3575,23 @@ function sessionTimestamp(session: AgentSession): number {
 }
 
 function kindToAgent(kind: AgentKindApi): AgentName {
-  return kind === "cursor" ? "Cursor" : kind === "claude" ? "Claude" : "Codex";
+  return kind === "cursor"
+    ? "Cursor"
+    : kind === "claude"
+      ? "Claude"
+      : kind === "workbuddy"
+        ? "WorkBuddy"
+        : "Codex";
 }
 
 function agentToKind(agent: AgentName): AgentKindApi {
+  if (agent === "WorkBuddy") return "workbuddy";
   return agent.toLocaleLowerCase() as AgentKindApi;
 }
 
 function normalizeAgentAvailability(value: unknown): AgentAvailabilityApi[] {
   const entries = Array.isArray(value) ? value : [];
-  return (["cursor", "claude", "codex"] as AgentKindApi[]).map((kind) => {
+  return (["cursor", "claude", "codex", "workbuddy"] as AgentKindApi[]).map((kind) => {
     const candidate = entries.find((entry) => isRecord(entry) && entry.kind === kind);
     if (!isRecord(candidate)
       || typeof candidate.label !== "string"
@@ -3619,7 +3628,7 @@ function normalizeAgentAvailability(value: unknown): AgentAvailabilityApi[] {
 
 function normalizeAgentUsages(value: unknown): AgentUsageApi[] {
   const entries = Array.isArray(value) ? value : [];
-  return (["cursor", "claude", "codex"] as AgentKindApi[]).map((agent) => {
+  return (["cursor", "claude", "codex", "workbuddy"] as AgentKindApi[]).map((agent) => {
     const candidate = entries.find((entry) => isRecord(entry) && entry.agent === agent);
     if (!isRecord(candidate)) {
       return unavailableAgentUsage(agent, "网关未返回该 Agent");
@@ -3677,7 +3686,7 @@ function unavailableAgentUsage(agent: AgentKindApi, reason: string): AgentUsageA
 }
 
 function unavailableAgentUsages(reason: string): AgentUsageApi[] {
-  return (["cursor", "claude", "codex"] as AgentKindApi[])
+  return (["cursor", "claude", "codex", "workbuddy"] as AgentKindApi[])
     .map((agent) => unavailableAgentUsage(agent, reason));
 }
 
