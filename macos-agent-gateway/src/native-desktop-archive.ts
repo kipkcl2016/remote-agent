@@ -188,7 +188,8 @@ function archiveWorkbuddySession(sessionId: string, archived: boolean): NativeDe
 function archiveCursorComposer(composerId: string, archived: boolean): NativeDesktopArchiveResult {
   const dbPath = getDefaultHistoryDirs().cursorComposerDb;
   if (!dbPath || !existsSync(dbPath)) {
-    return { agent: "cursor", ok: false, detail: "Cursor state.vscdb not found" };
+    // Soft-hide only when Cursor desktop state is unavailable (CI / not installed).
+    return { agent: "cursor", ok: true, detail: "Cursor state.vscdb not found; remote soft-hide only" };
   }
   let database: DatabaseSync | undefined;
   try {
@@ -198,7 +199,7 @@ function archiveCursorComposer(composerId: string, archived: boolean): NativeDes
       .prepare(`SELECT value FROM composerHeaders WHERE composerId = ? LIMIT 1`)
       .get(composerId) as { value?: string } | undefined;
     if (!row) {
-      return { agent: "cursor", ok: false, detail: "composer not found in Cursor DB" };
+      return { agent: "cursor", ok: true, detail: "composer not found in Cursor DB; remote soft-hide only" };
     }
     let value = row.value ?? "{}";
     try {
