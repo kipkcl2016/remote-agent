@@ -53,3 +53,5 @@ Windows 无内置 launchd 等价物；v0.1.0 需手动运行 `start-gateway.bat`
 
 完成上述列表前，验收结论不得使用“生产就绪”或“可直接暴露公网”。每次安全变更还必须在
 [`quality/feature-matrix.md`](quality/feature-matrix.md) 中更新对应功能的负向测试和人工证据。
+
+本轮补充：SSE 16 KiB 上限仅约束单条传输 JSON；大事件经既有认证 JSON 接口恢复，SQLite/JSON payload 的独立安全大小限制仍是上线前工作。Windows npm shim 只解析字面 Node 入口并直接 spawn；未知 batch 不执行。Claude ACP 续接加载失败不得静默新建上下文；回退 CLI 时保留原 cwd、权限和 nativeId。

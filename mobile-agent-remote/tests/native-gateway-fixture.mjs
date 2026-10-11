@@ -1,7 +1,7 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomInt } from "node:crypto";
 import { createServer } from "node:http";
 
-const pairingCode = String(100_000 + Math.floor(Math.random() * 900_000));
+const pairingCode = String(randomInt(10_000_000, 100_000_000));
 
 const now = new Date().toISOString();
 

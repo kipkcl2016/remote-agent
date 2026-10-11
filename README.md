@@ -42,7 +42,7 @@ OSS is free to self-host. For packaged builds, recipes, and support updates: wat
 
 ## 本机联调 / Local quickstart
 
-**五分钟快乐路径：** 开三个终端——网关 → 配对码 → 手机 Web；在「设备」页填入地址和 6 位码，就能在浏览器里列出会话并开任务。同机联调用 `http://127.0.0.1:17821`。  
+**五分钟快乐路径：** 开三个终端——网关 → 配对码 → 手机 Web；在「设备」页填入地址和 8 位码，就能在浏览器里列出会话并开任务。同机联调用 `http://127.0.0.1:17821`。
 **5-minute happy path:** three terminals—gateway → pair code → mobile web; enter the URL and 6-digit code on the Devices page, then browse sessions and start tasks. Same-machine: `http://127.0.0.1:17821`.
 
 终端 1 — 启动网关：
@@ -68,14 +68,14 @@ npm install
 npm run dev -- --port 4173
 ```
 
-在移动端「设备」页填写网关地址和终端 2 的 6 位配对码。浏览器与网关同机时用 `http://127.0.0.1:17821`。
+在移动端「设备」页填写网关地址和终端 2 的 8 位配对码。浏览器与网关同机时用 `http://127.0.0.1:17821`。
 
 真实手机访问不了 Mac 的 `127.0.0.1`。跨设备请先读 [安全部署说明](docs/security.md)，使用 **Tailscale / 受信任私网** 或 HTTPS 反向代理；**不要**直接把 HTTP 网关暴露到公网。
 
 ### 安全边界 / Security boundary
 
 - 工作目录白名单（`REMOTE_AGENT_ROOTS`）；符号链接逃逸会被拒绝  
-- 一次性 6 位配对码 → 设备令牌；原生端进 Keychain / Keystore  
+- 一次性 8 位配对码 → 设备令牌；原生端进 Keychain / Keystore
 - **推荐 Tailscale 或受信任私网 + HTTPS**；**不要**把明文 HTTP 网关直接暴露到公网  
 - Whitelist cwd · one-shot pairing codes · device tokens · prefer Tailscale/private net + HTTPS — do **not** expose plain HTTP to the public internet
 
