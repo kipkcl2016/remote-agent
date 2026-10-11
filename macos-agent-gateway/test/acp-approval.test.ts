@@ -12,6 +12,7 @@ import { PairingManager } from "../src/security.js";
 import { GatewayService } from "../src/service.js";
 import { GatewayStore } from "../src/store.js";
 import { createClaudeAcpAdapter } from "../src/adapters/claude-acp.js";
+import { launchAcpTurn } from "../src/adapters/acp/run-acp-turn.js";
 import {
   autoSelectPermissionOption,
   pickDecisionOptionId,
@@ -260,10 +261,6 @@ test("[APPROVAL-001] phone can approve a Claude ACP permission challenge", async
     let approvalPayload: Record<string, unknown> | undefined;
     for (let attempt = 0; attempt < 40; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 100));
-      const sessionRes = await fetch(`${baseUrl}/v1/sessions/${sessionId}`, {
-        headers: authorization,
-      });
-      const sessionBody = (await sessionRes.json()) as { data: { status: string } };
       const eventsRes = await fetch(`${baseUrl}/v1/sessions/${sessionId}/events`, {
         headers: authorization,
       });
@@ -272,6 +269,9 @@ test("[APPROVAL-001] phone can approve a Claude ACP permission challenge", async
       };
       const approval = eventsBody.data.find((event) => event.type === "approval");
       if (approval && typeof approval.payload.challengeId === "string") {
+        // Read status after discovering the challenge, avoiding a stale pre-event snapshot on Windows.
+        const sessionRes = await fetch(`${baseUrl}/v1/sessions/${sessionId}`, { headers: authorization });
+        const sessionBody = (await sessionRes.json()) as { data: { status: string } };
         challengeId = approval.payload.challengeId;
         approvalPayload = approval.payload;
         assert.equal(approval.payload.resolvable, true);
@@ -339,6 +339,35 @@ test("[APPROVAL-001] phone can approve a Claude ACP permission challenge", async
     store.close();
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("[SESSION-005][HISTORY-003] Claude ACP loads the existing session without duplicating replayed history", async () => {
+  const events: Array<{ type: string; payload: Record<string, unknown>; nativeId?: string }> = [];
+  const adapter = createClaudeAcpAdapter({ enabled: true, fallbackToCli: false, launchCommand: { command: process.execPath, args: [mockAgentPath] } });
+  const running = await adapter.launch({ cwd: tmpdir(), prompt: "Continue", permissionMode: "full", nativeId: "preserved-session" }, (event) => events.push(event));
+  await running.done;
+  assert.ok(events.some((event) => event.nativeId === "preserved-session"));
+  assert.ok(events.some((event) => String(event.payload.text).includes("Echo (preserved-session): Continue")));
+  assert.equal(events.some((event) => String(event.payload.text).includes("Replayed history")), false);
+  assert.ok(events.some((event) => event.type === "completed"));
+});
+
+test("[HISTORY-003] unsupported or failed ACP load cannot silently create a fresh session", async () => {
+  for (const env of [{ MOCK_ACP_NO_LOAD: "1" }, { MOCK_ACP_FAIL_LOAD: "1" }]) {
+    const events: Array<{ nativeId?: string }> = [];
+    const adapter = createClaudeAcpAdapter({ enabled: true, fallbackToCli: false, launchCommand: { command: process.execPath, args: [mockAgentPath], env } });
+    await assert.rejects(adapter.launch({ cwd: tmpdir(), prompt: "Continue", permissionMode: "full", nativeId: "preserved-session" }, (event) => events.push(event)));
+    assert.equal(events.some((event) => event.nativeId), false);
+  }
+});
+
+test("[AGENT-003] ACP initialization timeout rejects before starting a prompt", async () => {
+  const events: unknown[] = [];
+  await assert.rejects(launchAcpTurn({
+    cwd: tmpdir(), prompt: "Do not start", permissionMode: "ask", startupTimeoutMs: 50,
+    launch: { command: process.execPath, args: [mockAgentPath], env: { MOCK_ACP_SLOW_INIT: "1" } },
+  }, (event) => events.push(event)), /initialization timed out/);
+  assert.deepEqual(events, []);
 });
 
 

@@ -2819,7 +2819,7 @@ export default function Prototype() {
           />
           <SettingToggle
             title="Agent 状态通知"
-            description="完成、失败或等待确认时提醒我"
+            description="系统通知尚未启用；开关仅保存偏好"
             checked={notifications}
             onChange={() => {
               setNotifications((current) => {

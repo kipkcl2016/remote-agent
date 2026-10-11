@@ -343,9 +343,18 @@ test("gateway pairs a device and serves the session lifecycle", async () => {
     assert.equal(resumedBody.data.nativeId, nativeId);
     assert.equal(adapter.launchCount, 3);
 
+    const longText = "中文😀\"\\\n".repeat(4_000);
+    const largeEvent = service.record(createdBody.data.id, {
+      type: "output", payload: { stream: "assistant", text: longText },
+    });
+    const fullEventResponse = await fetch(
+      `${baseUrl}/v1/sessions/${createdBody.data.id}/events?after=${largeEvent.seq - 1}`,
+      { headers: authorization },
+    );
+    assert.deepEqual((await fullEventResponse.json()).data[0], largeEvent);
     const controller = new AbortController();
     const streamResponse = await fetch(
-      `${baseUrl}/v1/sessions/${createdBody.data.id}/events`,
+      `${baseUrl}/v1/sessions/${createdBody.data.id}/events?after=${largeEvent.seq - 1}`,
       {
         headers: { ...authorization, Accept: "text/event-stream" },
         signal: controller.signal,
@@ -355,7 +364,15 @@ test("gateway pairs a device and serves the session lifecycle", async () => {
     const reader = streamResponse.body?.getReader();
     assert.ok(reader);
     const firstChunk = await reader.read();
-    assert.match(new TextDecoder().decode(firstChunk.value), /connected|event:/);
+    let content = new TextDecoder().decode(firstChunk.value);
+    while (!content.includes("data: ")) {
+      const chunk = await reader.read();
+      assert.equal(chunk.done, false);
+      content += new TextDecoder().decode(chunk.value);
+    }
+    const serialized = content.split("\n").find((line) => line.startsWith("data: "))!.slice(6);
+    assert.ok(Buffer.byteLength(serialized) <= 16_384);
+    assert.deepEqual(JSON.parse(serialized), { ...largeEvent, payload: { _truncated: true } });
     controller.abort();
 
     const currentDeviceId = pairedDevicesBody.data[0]?.id;

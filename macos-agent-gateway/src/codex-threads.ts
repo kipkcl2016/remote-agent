@@ -1,6 +1,5 @@
-import { constants } from "node:fs";
-import { access } from "node:fs/promises";
-import { delimiter, join } from "node:path";
+import { resolveCliLauncher } from "./cli-launcher.js";
+
 import { spawn } from "node:child_process";
 import type { NativeHistorySession } from "./types.js";
 import { GATEWAY_VERSION } from "./version.js";
@@ -88,11 +87,11 @@ function readCodexThreadStatus(value: unknown): "running" | "completed" | "faile
 }
 
 async function readCodexThreads(): Promise<NativeHistorySession[]> {
-  const executable = await findExecutable("codex");
+  const executable = await resolveCliLauncher("codex");
   if (!executable) throw new Error("codex unavailable");
 
   return new Promise((resolve, reject) => {
-    const child = spawn(executable, ["app-server", "--stdio"], {
+    const child = spawn(executable.executable, [...executable.prefixArgs, "app-server", "--stdio"], {
       env: { ...process.env, NO_COLOR: "1", FORCE_COLOR: "0" },
       shell: false,
       stdio: ["pipe", "pipe", "ignore"],
@@ -218,18 +217,6 @@ function cloneSessions(sessions: NativeHistorySession[]): NativeHistorySession[]
   return sessions.map((session) => ({ ...session }));
 }
 
-async function findExecutable(command: string): Promise<string | undefined> {
-  for (const directory of (process.env.PATH ?? "").split(delimiter).filter(Boolean)) {
-    const candidate = join(directory, command);
-    try {
-      await access(candidate, constants.X_OK);
-      return candidate;
-    } catch {
-      // Continue searching the fixed command on PATH.
-    }
-  }
-  return undefined;
-}
 
 function readEpochSeconds(value: unknown): string | undefined {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return undefined;

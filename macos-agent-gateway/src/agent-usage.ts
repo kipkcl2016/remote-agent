@@ -1,6 +1,6 @@
-import { constants, readFileSync } from "node:fs";
-import { access } from "node:fs/promises";
-import { delimiter, join } from "node:path";
+import { resolveCliLauncher } from "./cli-launcher.js";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { DatabaseSync } from "node:sqlite";
 import type {
@@ -309,11 +309,11 @@ async function fetchCursorPeriodUsage(token: string): Promise<unknown> {
 }
 
 async function readCodexRateLimits(): Promise<unknown> {
-  const executable = await findExecutable("codex");
+  const executable = await resolveCliLauncher("codex");
   if (!executable) throw new Error("codex unavailable");
 
   return new Promise((resolve, reject) => {
-    const child = spawn(executable, ["app-server", "--stdio"], {
+    const child = spawn(executable.executable, [...executable.prefixArgs, "app-server", "--stdio"], {
       env: { ...process.env, NO_COLOR: "1", FORCE_COLOR: "0" },
       shell: false,
       stdio: ["pipe", "pipe", "ignore"],
@@ -394,10 +394,10 @@ async function runFixedCommand(
   timeoutMs: number,
   options: { allowNonZeroExit?: boolean } = {},
 ): Promise<string> {
-  const executable = await findExecutable(command);
+  const executable = await resolveCliLauncher(command);
   if (!executable) throw new Error(`${command} unavailable`);
   return new Promise((resolve, reject) => {
-    const child = spawn(executable, args, {
+    const child = spawn(executable.executable, [...executable.prefixArgs, ...args], {
       env: { ...process.env, NO_COLOR: "1", FORCE_COLOR: "0" },
       shell: false,
       stdio: ["ignore", "pipe", "ignore"],
@@ -428,18 +428,6 @@ async function runFixedCommand(
   });
 }
 
-async function findExecutable(command: string): Promise<string | undefined> {
-  for (const directory of (process.env.PATH ?? "").split(delimiter).filter(Boolean)) {
-    const candidate = join(directory, command);
-    try {
-      await access(candidate, constants.X_OK);
-      return candidate;
-    } catch {
-      // Continue searching the fixed command on PATH.
-    }
-  }
-  return undefined;
-}
 
 function unavailableUsage(agent: AgentKind, message: string, updatedAt: string): AgentUsage {
   return { agent, state: "unavailable", windows: [], message, updatedAt };

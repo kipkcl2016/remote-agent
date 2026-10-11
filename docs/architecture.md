@@ -69,3 +69,5 @@ macOS 网关负责认证、目录白名单、统一会话模型、Agent 进程�
 4. 增加 Tailscale Serve 或受管中继部署方案，网关仍默认只监听回环地址。
 
 Agent 额度由网关的独立只读探测服务提供并缓存 60 秒。Codex 在 ChatGPT 登录下通过本机 app-server 的 `account/rateLimits/read` 获取窗口，API Key 模式显示 API模式；Cursor 使用 IDE `state.vscdb` 登录态调用 Dashboard `GetCurrentPeriodUsage`；Claude API 模式同样显示 API模式。移动端额度轮询不参与会话/历史的并行加载，因此慢响应或失败不会延迟首页会话。
+
+SSE 超限事件以保留序号的占位事件传输，客户端经既有 Bearer JSON events 接口恢复完整 payload 后推进游标；存储与 JSON 拉取均不截断。CLI 查找统一经过 `cli-launcher.ts`：Windows 原生二进制直接运行，标准 npm shim 转为固定 Node 入口，全部保持 `shell: false`。Claude ACP 在初始化和会话创建/加载成功后才返回运行句柄；续接使用 `session/load`，过滤加载回放，失败不静默新建会话。
