@@ -147,6 +147,21 @@ export function extractServeProxyTarget(
   return undefined;
 }
 
+
+export function isOperatorDeniedError(output: string): boolean {
+  const lower = output.toLowerCase();
+  return lower.includes("access denied") || lower.includes("serve config denied");
+}
+
+export function operatorDeniedHint(): string {
+  return [
+    "Tailscale 拒绝写入 Serve 配置（Access denied / serve config denied）。",
+    "请先授权当前用户为 operator，然后重试：",
+    "  sudo tailscale set --operator=$USER",
+    "完成后再运行：npm run serve:tailscale",
+  ].join("\n");
+}
+
 export function pairingPayload(url: string, code: string): string {
   // Phone still uses existing Devices UI (URL + 8-digit code). QR encodes a
   // compact text block phones can scan into Notes / paste helpers; do not invent
@@ -316,10 +331,16 @@ export async function runTailscaleServe(
     runner,
   );
   if (serve.status !== 0) {
-    writeErr(
-      (serve.stderr.trim() || serve.stdout.trim() || "tailscale serve 失败") +
-        "\n若提示启用 HTTPS Certificates，请按 CLI 给出的链接在 Admin Console 开启后重试。\n",
-    );
+    const detail = serve.stderr.trim() || serve.stdout.trim() || "tailscale serve 失败";
+    if (isOperatorDeniedError(detail)) {
+      writeErr(`${detail}\n${operatorDeniedHint()}\n`);
+    } else {
+      writeErr(
+        detail +
+          "\n若提示启用 HTTPS Certificates，请按 CLI 给出的链接在 Admin Console 开启后重试。\n" +
+          "若提示 Access denied / serve config denied，请执行：sudo tailscale set --operator=$USER 后重试。\n",
+      );
+    }
     return 1;
   }
 
@@ -372,6 +393,7 @@ export async function runTailscaleServe(
     write("  3. 在 Mac 运行 npm run pair，再输入 8 位配对码\n");
   }
   write("\n二维码内容（网关 HTTPS URL" + (pairingCode ? " + 配对码文本" : "") + "）：\n");
+  write("（首次通过 npx 拉取 qrcode 可能较慢，请稍候…）\n");
   const rendered = renderQrToStdout(qrText, runner);
   if (!rendered) {
     write("(未能渲染二维码，请手动复制 URL" + (pairingCode ? " 与配对码" : "") + ")\n");

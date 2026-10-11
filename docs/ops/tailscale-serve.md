@@ -62,10 +62,12 @@ npm run serve:tailscale -- --reset            # 清除本机 Serve 配置
 | 未找到 Tailscale CLI | 打开 https://tailscale.com/download ；macOS 查 `/Applications/Tailscale.app/.../Tailscale` |
 | `BackendState` 非 Running | `tailscale up` |
 | Serve 提示 HTTPS / 证书 | Admin Console 开启 HTTPS Certificates 后重试 |
+| Access denied / serve config denied | `sudo tailscale set --operator=$USER` 后重试 `npm run serve:tailscale` |
+| 首次 QR 较慢 | 首次 `npx` 拉取 `qrcode` 可能需等待；失败则复制明文 URL/码 |
 | 网关 health 失败 | 先 `npm run dev` / `service:install` |
 | 配对 403 / 失败 | 确认从本机回环请求；网关已启动 |
 | HTTPS 端口已被其他代理占用 | `npm run serve:tailscale -- --reset` 后重来，或换 `--https-port` |
-| QR 未渲染 | 检查网络/`npx`；直接复制打印的 URL 与配对码 |
+| QR 未渲染 | 检查网络/`npx`（首次可能较慢）；直接复制打印的 URL 与配对码 |
 
 ## 与 Claude ACP 手机批准的关系
 

@@ -4,9 +4,14 @@ import {
   buildServeHttpsUrl,
   extractDnsName,
   extractServeProxyTarget,
+  isOperatorDeniedError,
+  operatorDeniedHint,
   pairingPayload,
   parseArgs,
+  runTailscaleServe,
   HelpRequested,
+  type CommandResult,
+  type Runner,
 } from "../src/tailscale-serve.js";
 
 test("parseArgs defaults and flags", () => {
@@ -75,4 +80,59 @@ test("pairingPayload keeps existing auth UX (URL + code text, no new scheme)", (
     "Remote Agent\nhttps://mac.tailnet.ts.net\ncode=01234567",
   );
   assert.doesNotMatch(pairingPayload("https://example", "1"), /^[a-z]+:\/\//i);
+});
+
+test("isOperatorDeniedError detects Access denied / serve config denied", () => {
+  assert.equal(isOperatorDeniedError("Access denied: serve config"), true);
+  assert.equal(isOperatorDeniedError("failed to set serve config: Access denied"), true);
+  assert.equal(isOperatorDeniedError("serve config denied by policy"), true);
+  assert.equal(isOperatorDeniedError("HTTPS certificates not enabled"), false);
+  assert.match(operatorDeniedHint(), /sudo tailscale set --operator=\$USER/);
+  assert.match(operatorDeniedHint(), /npm run serve:tailscale/);
+});
+
+test("runTailscaleServe prints operator hint on Access denied", async () => {
+  const errs: string[] = [];
+  const runner: Runner = (command, args) => {
+    const joined = `${command} ${args.join(" ")}`;
+    if (args.includes("status") && args.includes("--json")) {
+      return {
+        status: 0,
+        stdout: JSON.stringify({
+          BackendState: "Running",
+          Self: { DNSName: "mac.tailnet.ts.net." },
+        }),
+        stderr: "",
+      };
+    }
+    if (args[0] === "serve" && args.includes("--bg")) {
+      return {
+        status: 1,
+        stdout: "",
+        stderr: "Access denied: failed to set serve config\n",
+      };
+    }
+    return { status: 0, stdout: "", stderr: "" } satisfies CommandResult;
+  };
+  const fetchImpl = (async () =>
+    ({
+      ok: true,
+      json: async () => ({}),
+    }) as Response) as typeof fetch;
+
+  const code = await runTailscaleServe(
+    { gatewayPort: 17821, httpsPort: 443, pair: false, reset: false },
+    {
+      env: { TAILSCALE_BIN: "/bin/ls" },
+      platform: "darwin",
+      runner,
+      fetchImpl,
+      write: () => {},
+      writeErr: (text) => errs.push(text),
+    },
+  );
+  assert.equal(code, 1);
+  const joined = errs.join("");
+  assert.match(joined, /Access denied/i);
+  assert.match(joined, /sudo tailscale set --operator=\$USER/);
 });
