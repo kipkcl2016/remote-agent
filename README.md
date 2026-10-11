@@ -70,6 +70,18 @@ npm run dev -- --port 4173
 
 在移动端「设备」页填写网关地址和终端 2 的 6 位配对码。浏览器与网关同机时用 `http://127.0.0.1:17821`。
 
+### Tailscale 一键（推荐跨设备）
+
+网关已在本机跑起来后，一条命令启用 Tailscale Serve，打印 HTTPS URL + 终端二维码 +（默认）8 位配对码：
+
+```bash
+cd macos-agent-gateway
+npm run serve:tailscale
+```
+
+手机与 Mac 加入同一 Tailscale，在「设备」页填入 HTTPS 地址和配对码。详见 [docs/ops/tailscale-serve.md](docs/ops/tailscale-serve.md)。  
+Windows：Serve 命令可用，但 `service:install`（launchd）不可用——请用 `start-gateway.bat` 保活网关后再跑本命令。
+
 真实手机访问不了 Mac 的 `127.0.0.1`。跨设备请先读 [安全部署说明](docs/security.md)，使用 **Tailscale / 受信任私网** 或 HTTPS 反向代理；**不要**直接把 HTTP 网关暴露到公网。
 
 ### 安全边界 / Security boundary
