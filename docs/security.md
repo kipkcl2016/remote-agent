@@ -23,7 +23,7 @@
 
 默认回环监听适合 Mac 本机浏览器联调。真实 iOS/Android 设备推荐以下两种方式之一：
 
-1. 私有覆盖网络：Mac 与手机加入同一个受信任网络，并通过 HTTPS Serve/代理转发到 `127.0.0.1:17821`。
+1. 私有覆盖网络：Mac 与手机加入同一个受信任网络，并通过 HTTPS Serve/代理转发到 `127.0.0.1:17821`。（Tailscale 一键说明见 [ops/tailscale-serve.md](ops/tailscale-serve.md)）
 2. HTTPS 反向代理：TLS 在 Mac 或受管边缘终止，代理只转发到本机回环端口，并额外限制来源/IP。
 
 若显式设置 `REMOTE_AGENT_HOST=0.0.0.0`，必须同时保证网络隔离和 TLS。普通 HTTP 只适合受控的本地联调，不具备链路加密，移动端会明确显示“已配对 · 本地网络”。
