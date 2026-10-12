@@ -94,7 +94,6 @@ test("isOperatorDeniedError detects Access denied / serve config denied", () => 
 test("runTailscaleServe prints operator hint on Access denied", async () => {
   const errs: string[] = [];
   const runner: Runner = (command, args) => {
-    const joined = `${command} ${args.join(" ")}`;
     if (args.includes("status") && args.includes("--json")) {
       return {
         status: 0,
@@ -123,7 +122,7 @@ test("runTailscaleServe prints operator hint on Access denied", async () => {
   const code = await runTailscaleServe(
     { gatewayPort: 17821, httpsPort: 443, pair: false, reset: false },
     {
-      env: { TAILSCALE_BIN: "/bin/ls" },
+      env: { TAILSCALE_BIN: process.execPath },
       platform: "darwin",
       runner,
       fetchImpl,
