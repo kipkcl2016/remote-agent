@@ -35,7 +35,8 @@
 - Cursor 固定使用 `-p --output-format stream-json --workspace <cwd> --trust`。
 - Claude 固定使用 `-p --output-format stream-json --verbose --no-chrome`。
 - Codex 新会话固定使用 `exec --json --skip-git-repo-check -C <cwd> -s <sandbox>`；续接使用 `exec resume --json --skip-git-repo-check -c sandbox_mode=<...> <nativeId>`，确保白名单内但自身不是 Git 仓库的工作目录也能续接。
-- 三者都必须由绝对 executable 直接 spawn，保持 `shell: false`；prompt 只能作为单独 argv，不经过 shell 拼接。
+- CLI 由绝对 executable 直接 spawn，保持 `shell: false`；prompt 只能作为单独 argv，不经过 shell 拼接。Windows 优先解析 `.exe/.com`，标准 npm `.cmd` 只解析字面 Node 入口并由 Node 直接执行；未知 batch 脚本视为不可用，不交给 `cmd.exe`。
+- Claude 默认优先 ACP：`ask` 等待手机单次批准/拒绝，CLI 回退仍为 plan 类受限执行。带 `nativeId` 的 ACP 请求必须先 `session/load`；不支持或加载失败时按既有策略回退 CLI 续接或报错，不能改成 `session/new`。加载期间回放消息不重复写入网关事件。
 
 ### 2.3 会话状态
 
@@ -200,7 +201,7 @@ type PairedDevice = {
 - 公开接口只有 `GET /v1/health`、`POST /v1/pairing/start`、`POST /v1/pairing/confirm`。
 - 其余接口需要 `Authorization: Bearer <device-token>`。token 空值或超过 512 字符视为无效。
 - `/v1/pairing/start` 仅接受 `127.0.0.1`、`::1`、IPv4-mapped loopback。
-- `/v1/pairing/confirm` 按 remote address 限制为 10 次/60 秒；配对码必须是 6 位数字。
+- `/v1/pairing/confirm` 按 remote address 限制为 10 次/60 秒；配对码必须是 8 位数字。
 - 默认 body 上限为 1,048,576 bytes。body 必须是 JSON object；未知字段当前被忽略。
 - 带 `Origin` 的请求必须精确匹配 `REMOTE_AGENT_ALLOWED_ORIGINS`；无 Origin 的本机/原生请求允许继续。
 - `OPTIONS` 返回 204；允许 `GET, POST, OPTIONS` 和 `Authorization, Content-Type, Last-Event-ID`。跨域响应暴露 `Content-Disposition, Content-Length, X-Remote-Agent-Filename`，供文件预览读取元数据。
@@ -240,7 +241,7 @@ type PairedDevice = {
 
 | 字段 | 规则 |
 | --- | --- |
-| `code` | 必填字符串，最多 6 字符，必须匹配 `^\d{6}$` |
+| `code` | 必填字符串，最多 8 字符，必须匹配 `^\d{8}$` |
 | `deviceName` | trim 后非空，最多 80 字符 |
 | `prompt` | trim 后非空，最多 50,000 字符 |
 | `cwd` | trim 后非空，最多 4,096 字符；必须是存在的绝对路径，realpath 后位于 allowed roots |
@@ -299,7 +300,8 @@ data: <完整 SessionEvent JSON>
 - 建连后先补发 `after` / `Last-Event-ID` 之后的持久化事件，再订阅新事件。
 - 每 15 秒发送 `: heartbeat`。
 - 连接关闭时必须取消订阅和 heartbeat。
-- SSE 的 `data` 是完整 `SessionEvent`，不是仅 payload。
+- SSE 的 `data` 是 `SessionEvent` JSON，单条 `data` 按 UTF-8 字节计最多 16 KiB。超限事件保留 `seq/sessionId/type/createdAt`，payload 替换为 `{ "_truncated": true }`；不切割 JSON 字符串，也不修改 SQLite 中的事件。
+- 客户端收到占位事件后，用当前 Bearer token 请求 JSON events 接口（`after=seq-1`）取回该序号的完整事件。成功前不能推进游标或展示后续事件；失败时重连或回退 JSON 轮询。JSON 事件接口仍返回完整 payload。
 
 移动端消费 SSE 时必须：用 `after` / `Last-Event-ID` 恢复游标、按 `seq` 去重、在连接失败后重连或回退轮询，并在认证失效时停止订阅。前后台切换与长时间后台的恢复行为仍属演进项。
 

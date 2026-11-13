@@ -57,17 +57,9 @@ jobs:
         working-directory: macos-agent-gateway
         run: npm ci
       
-      - name: Run tests
+      - name: Verify gateway
         working-directory: macos-agent-gateway
-        run: npm test
-      
-      - name: Type check
-        working-directory: macos-agent-gateway
-        run: npm run typecheck
-      
-      - name: Build
-        working-directory: macos-agent-gateway
-        run: npm run build
+        run: npm run verify
       
       - name: Create package
         working-directory: macos-agent-gateway
@@ -166,6 +158,18 @@ jobs:
         working-directory: mobile-agent-remote
         run: npm run build
       
+      - name: Test client contracts
+        working-directory: mobile-agent-remote
+        run: npm run test:sites && npm run test:gateway-stream && npm run test:project-sessions && node --experimental-strip-types --test tests/session-archive.test.mjs
+
+      - name: Install Chromium for interaction tests
+        working-directory: mobile-agent-remote
+        run: npx playwright install --with-deps chromium
+
+      - name: Test mobile interactions
+        working-directory: mobile-agent-remote
+        run: npm run test:runtime
+
       - name: Create client archive
         working-directory: mobile-agent-remote
         run: |

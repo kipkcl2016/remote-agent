@@ -114,6 +114,28 @@ function defaultMockAgents(): MockAgentAvailability[] {
   ];
 }
 
+async function chooseChannel(page: Page, agent: "Cursor" | "Claude" | "Codex") {
+  if (await page.getByTestId("bottom-sheet").isVisible()) {
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("bottom-sheet")).toHaveCount(0);
+  }
+  if (await page.getByTestId("switch-channel").isVisible()) {
+    if ((await page.getByTestId("switch-channel").innerText()).trim() === agent) return;
+    await page.getByTestId("switch-channel").click();
+    await page.getByTestId(`switch-channel-option-${agent}`).click();
+  } else {
+    await page.getByTestId(`channel-${agent}`).click();
+  }
+  await expect(page.getByTestId("switch-channel")).toContainText(agent);
+}
+
+async function openConnectedHome(page: Page, agent: "Cursor" | "Claude" | "Codex" = "Cursor") {
+  const gateway = await installConnectedGateway(page);
+  await page.goto("/");
+  await chooseChannel(page, agent);
+  return gateway;
+}
+
 async function installConnectedGateway(page: Page, extraSessions = 0) {
   await page.addInitScript(({ url }) => {
     localStorage.setItem("remote-agent.gateway.url", url);
@@ -578,6 +600,7 @@ test("[PAIR-002][DEVICE-002][DEVICE-004][SESSION-008] saved Macs add, switch, pe
 
   await page.goto("/");
   await expect(page.getByTestId("device-status")).toContainText("OneMac.local");
+  await chooseChannel(page, "Cursor");
   await expect(page.getByTestId("session-mac-one-session")).toBeVisible();
 
   await page.getByTestId("nav-devices").click();
@@ -589,11 +612,13 @@ test("[PAIR-002][DEVICE-002][DEVICE-004][SESSION-008] saved Macs add, switch, pe
   await expect(page.getByTestId("saved-connections").locator(".saved-connection-row")).toHaveCount(2);
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("device-status")).toContainText("TwoMac.local");
+  await chooseChannel(page, "Claude");
   await expect(page.getByTestId("session-mac-two-session")).toBeVisible();
   await expect(page.getByTestId("session-mac-one-session")).toHaveCount(0);
 
   await page.reload();
   await expect(page.getByTestId("device-status")).toContainText("TwoMac.local");
+  await chooseChannel(page, "Claude");
   await expect(page.getByTestId("session-mac-two-session")).toBeVisible();
   const cacheKeys = await page.evaluate(() => Object.keys(localStorage)
     .filter((key) => key.startsWith("remote-agent.session-cache.v1.")));
@@ -602,10 +627,12 @@ test("[PAIR-002][DEVICE-002][DEVICE-004][SESSION-008] saved Macs add, switch, pe
   await page.getByTestId("nav-devices").click();
   await page.getByTestId("switch-connection-gateway-one").click();
   await expect(page.getByTestId("device-status")).toContainText("OneMac.local");
+  await chooseChannel(page, "Cursor");
   await expect(page.getByTestId("session-mac-one-session")).toBeVisible();
   await page.getByTestId("nav-devices").click();
   await page.getByRole("button", { name: "从本机移除此 Mac" }).click();
   await expect(page.getByTestId("device-status")).toContainText("TwoMac.local");
+  await chooseChannel(page, "Claude");
   await expect(page.getByTestId("session-mac-two-session")).toBeVisible();
   const remaining = await page.evaluate(() => JSON.parse(
     localStorage.getItem("remote-agent.gateway.connections.v1") ?? "null",
@@ -617,19 +644,24 @@ test("[PAIR-002][DEVICE-002][DEVICE-004][SESSION-008] saved Macs add, switch, pe
 test("[SESSION-007] project view groups agents, persists collapse state, and prefills cwd", async ({ page }) => {
   await installConnectedGateway(page);
   await page.goto("/");
+  await chooseChannel(page, "Cursor");
   await expect(page.getByText("TestMac.local")).toBeVisible();
 
   await page.getByTestId("view-projects").click();
-  await expect(page.getByTestId("project-group")).toHaveCount(2);
+  await expect(page.getByTestId("project-group")).toHaveCount(1);
   const authProject = page.getByTestId("project-group").filter({ hasText: "auth-service" });
   await expect(authProject).toContainText("最近更新");
   await expect(authProject).not.toContainText("个会话");
   await expect(page.getByTestId("session-cursor-session")).toBeVisible();
+  await expect(page.getByTestId("session-codex-session")).toHaveCount(0);
+  await chooseChannel(page, "Codex");
   await expect(page.getByTestId("session-codex-session")).toBeVisible();
+  await chooseChannel(page, "Cursor");
 
   await page.getByTestId("project-toggle-group:auth-service").click();
   await expect(page.getByTestId("session-cursor-session")).toHaveCount(0);
   await page.reload();
+  await chooseChannel(page, "Cursor");
   await page.getByTestId("view-projects").click();
   await expect(page.getByTestId("session-cursor-session")).toHaveCount(0);
 
@@ -685,19 +717,21 @@ test("[SESSION-007] same-name benchmark workspaces keep separate projects with u
   ));
 
   await page.goto("/");
+  await chooseChannel(page, "Claude");
   await expect(page.getByTestId("session-benchmark-current-task-1"))
     .toContainText("claude · task-1 · current-vs-luna");
   await expect(page.getByTestId("session-benchmark-current-task-2"))
     .toContainText("claude · task-2 · current-vs-luna");
+  await chooseChannel(page, "Cursor");
   await expect(page.getByTestId("session-benchmark-cursor-task-1"))
     .toContainText("cursor · task-1 · luna-vs-cursor");
 
+  await chooseChannel(page, "Claude");
   await page.getByTestId("view-projects").click();
-  await expect(page.getByTestId("project-group")).toHaveCount(3);
+  await expect(page.getByTestId("project-group")).toHaveCount(2);
   await expect(page.locator(".project-summary strong")).toHaveText([
     "claude · task-1 · current-vs-luna",
     "claude · task-2 · current-vs-luna",
-    "cursor · task-1 · luna-vs-cursor",
   ]);
 
   await page.getByTestId("search-toggle").click();
@@ -741,6 +775,7 @@ test("[SESSION-007] duplicate Codex project folders keep the real name in the pr
   ));
 
   await page.goto("/");
+  await chooseChannel(page, "Codex");
   await page.getByTestId("view-projects").click();
   await expect(page.getByTestId("project-group")).toHaveCount(1);
   const mergedGroup = page.getByTestId("project-group").filter({ hasText: "remote-agent" });
@@ -754,7 +789,7 @@ test("[SESSION-008] matching cache renders first, then live data replaces it wit
   const freshSession: MockSession = {
     id: "fresh-session",
     nativeId: "fresh-native",
-    agent: "codex",
+    agent: "cursor",
     title: "服务端最新会话",
     cwd: "/Users/test/Projects/fresh-project",
     projectId: "project-fresh",
@@ -791,11 +826,13 @@ test("[SESSION-008] matching cache renders first, then live data replaces it wit
   const syncGate = new Promise<void>((resolve) => { releaseSync = resolve; });
   const events = new Map<string, Array<Record<string, unknown>>>();
   await page.route(`${gatewayUrl}/**`, async (route) => {
-    await syncGate;
+    const path = new URL(route.request().url()).pathname;
+    if (path === "/v1/sessions" || path === "/v1/history") await syncGate;
     await handleGatewayRoute(route, [freshSession], events);
   });
 
   await page.goto("/");
+  await chooseChannel(page, "Cursor");
   await expect(page.getByTestId("session-cached-session")).toBeVisible();
   await expect(page.getByTestId("session-sync-state")).toContainText("正在同步最新会话");
   releaseSync();
@@ -837,11 +874,13 @@ test("[SESSION-008] cache from a different server is isolated during cold loadin
   let releaseSync = () => undefined;
   const syncGate = new Promise<void>((resolve) => { releaseSync = resolve; });
   await page.route(`${gatewayUrl}/**`, async (route) => {
-    await syncGate;
+    const path = new URL(route.request().url()).pathname;
+    if (path === "/v1/sessions" || path === "/v1/history") await syncGate;
     await handleGatewayRoute(route, [], new Map());
   });
 
   await page.goto("/");
+  await chooseChannel(page, "Claude");
   await expect(page.getByText("正在加载会话")).toBeVisible();
   await expect(page.getByText("不应显示的其他服务端缓存")).toHaveCount(0);
   releaseSync();
@@ -873,13 +912,15 @@ test("[SESSION-008] cached sessions stay visible on sync failure and retry recov
 
   let failing = true;
   await page.route(`${gatewayUrl}/**`, async (route) => {
-    if (failing) {
+    const path = new URL(route.request().url()).pathname;
+    if (failing && (path === "/v1/sessions" || path === "/v1/history")) {
       return route.fulfill({ status: 503, json: { error: { message: "offline" } } });
     }
     return handleGatewayRoute(route, [], new Map());
   });
 
   await page.goto("/");
+  await chooseChannel(page, "Claude");
   await expect(page.getByTestId("session-cached-retry-session")).toBeVisible();
   await expect(page.getByTestId("session-sync-state")).toContainText("同步失败");
   failing = false;
@@ -913,6 +954,7 @@ test("[SESSION-002][SESSION-005] tabs and search filter immediately before a ful
     /Codex 每周剩余 41%/,
   );
 
+  await chooseChannel(page, "Cursor");
   const headingActions = page.locator(".section-heading-actions");
   await expect(headingActions.getByTestId("view-recent")).toBeVisible();
   await expect(headingActions.getByTestId("view-projects")).toBeVisible();
@@ -927,7 +969,7 @@ test("[SESSION-002][SESSION-005] tabs and search filter immediately before a ful
       - ((productHeaderBox?.y ?? 0) + (productHeaderBox?.height ?? 0) / 2),
   )).toBeLessThanOrEqual(4);
   await expect(page.getByTestId("device-status").locator("img, .device-copy, .row-chevron")).toHaveCount(0);
-  expect((await page.locator(".agent-filters").boundingBox())?.height).toBeLessThanOrEqual(54);
+  expect((await page.getByTestId("switch-channel").boundingBox())?.height).toBeLessThanOrEqual(54);
   const deviceScreen = page.getByTestId("device-screen");
   const iPhoneScreenBox = await deviceScreen.boundingBox();
   expect(Math.abs((iPhoneScreenBox?.width ?? 0) - 393)).toBeLessThanOrEqual(1);
@@ -951,8 +993,7 @@ test("[SESSION-002][SESSION-005] tabs and search filter immediately before a ful
   await expect(completedRow).not.toContainText("受限执行");
   await expect(page.getByTestId("session-state-list-cursor-session")).toHaveCount(0);
   expect((await completedRow.boundingBox())?.height).toBeLessThanOrEqual(72);
-  await expect(page.getByTestId("session-state-list-codex-session")).toHaveAttribute("aria-label", "运行中");
-  await expect(page.getByTestId("session-state-list-codex-session").locator("svg")).toHaveCount(1);
+  await expect(page.getByTestId("session-state-list-codex-session")).toHaveCount(0);
   const statusGroupBox = await page.locator(".status-summary-group").boundingBox();
   const newSessionBox = await page.getByTestId("new-session").boundingBox();
   expect(newSessionBox?.x ?? 0).toBeGreaterThan(
@@ -960,10 +1001,12 @@ test("[SESSION-002][SESSION-005] tabs and search filter immediately before a ful
   );
   expect(Math.abs((newSessionBox?.y ?? 0) - (statusGroupBox?.y ?? 0))).toBeLessThanOrEqual(1);
 
-  await page.getByTestId("filter-Codex").click();
+  await chooseChannel(page, "Codex");
   await expect(page.getByTestId("session-codex-session")).toBeVisible();
   await expect(page.getByTestId("session-cursor-session")).toHaveCount(0);
-  await expect(page.getByTestId("filter-Codex")).toContainText("Codex");
+  await expect(page.getByTestId("switch-channel")).toContainText("Codex");
+  await expect(page.getByTestId("session-state-list-codex-session")).toHaveAttribute("aria-label", "运行中");
+  await expect(page.getByTestId("session-state-list-codex-session").locator("svg")).toHaveCount(1);
   await expect(page.getByTestId("filter-feedback")).toContainText("进行中1");
   await expect(page.getByTestId("filter-feedback")).toContainText("已完成 · 未读0");
   await expect(page.getByTestId("new-session")).toHaveAttribute("aria-label", "发起 Codex 新会话");
@@ -971,7 +1014,7 @@ test("[SESSION-002][SESSION-005] tabs and search filter immediately before a ful
   await expect(page.getByTestId("new-session-agent-Codex")).toHaveAttribute("aria-pressed", "true");
   await page.keyboard.press("Escape");
 
-  await page.getByTestId("filter-Claude").click();
+  await chooseChannel(page, "Claude");
   await expect(page.getByTestId("session-claude-session")).toBeVisible();
   await expect(page.getByTestId("session-codex-session")).toHaveCount(0);
 
@@ -979,13 +1022,12 @@ test("[SESSION-002][SESSION-005] tabs and search filter immediately before a ful
   await expect(page.getByTestId("new-session")).toHaveAttribute("aria-label", "发起 Claude 新会话");
   await page.getByTestId("history-search").fill("支付");
   await expect(page.getByTestId("session-list")).toContainText("没有找到会话");
-  await page.getByTestId("filter-Codex").click();
+  await chooseChannel(page, "Codex");
   await expect(page.getByTestId("session-codex-session")).toBeVisible();
-  await page.getByTestId("search-clear").click();
-  await page.getByTestId("search-toggle").click();
+  await expect(page.getByTestId("history-search")).toHaveCount(0);
   await expect(page.getByTestId("new-session")).toBeVisible();
 
-  await page.getByTestId("filter-Cursor").click();
+  await chooseChannel(page, "Cursor");
   await expect(page.getByTestId("session-cursor-session")).toBeVisible();
   await expect(page.getByTestId("session-codex-session")).toHaveCount(0);
   await expect(page.getByTestId("new-session")).toHaveAttribute("aria-label", "发起 Cursor 新会话");
@@ -1007,7 +1049,9 @@ test("[SESSION-002][SESSION-005] tabs and search filter immediately before a ful
   await expect(page.getByTestId("session-detail")).toHaveCount(0);
   await expect(page.getByTestId("session-list")).toBeVisible();
 
-  await page.getByTestId("filter-全部").click();
+  await page.getByTestId("switch-channel").click();
+  await expect(page.getByTestId("channel-switch-modal")).toBeVisible();
+  await page.getByTestId("channel-switch-close").click();
   await expect(page.getByTestId("new-session")).toBeVisible();
 });
 
@@ -1036,6 +1080,7 @@ test("[SESSION-004] user questions stick to the current answer section without o
   ]);
 
   await page.goto("/");
+  await chooseChannel(page, "Codex");
   await page.getByTestId("device-picker").click();
   await page.getByTestId("device-option-pixel-10").click();
   await expect(page.getByTestId("device-screen")).toHaveAttribute("data-device", "pixel-10");
@@ -1178,6 +1223,7 @@ test("[FILE-001] session files use type-aware previews and authenticated export"
   ]);
 
   await page.goto("/");
+  await chooseChannel(page, "Cursor");
   await expect(page.getByText("TestMac.local")).toBeVisible();
   await page.getByTestId("session-cursor-session").click();
 
@@ -1241,7 +1287,9 @@ test("[FILE-001] session files use type-aware previews and authenticated export"
 
 test("[SESSION-003][SESSION-004] creating a session opens live output with diagnostics collapsed", async ({ page }) => {
   const gateway = await installConnectedGateway(page);
+  gateway.sessions.push({ ...gateway.sessions.find((item) => item.id === "claude-session")!, id: "cursor-mq-session", agent: "cursor" });
   await page.goto("/");
+  await chooseChannel(page, "Cursor");
   await expect(page.getByText("TestMac.local")).toBeVisible();
 
   await page.getByTestId("new-session").click();
@@ -1281,21 +1329,23 @@ test("[SESSION-001] each tab and project keeps at most 20 recent sessions", asyn
   expect(duplicate).toBeTruthy();
   if (duplicate) gateway.sessions.push({ ...duplicate }, { ...duplicate });
   await page.goto("/");
+  await chooseChannel(page, "Cursor");
   await expect(page.getByText("TestMac.local")).toBeVisible();
 
   await expect(page.getByTestId("session-list").locator(".session-row")).toHaveCount(20);
   await expect(page.getByTestId("session-cursor-session")).toHaveCount(1);
   await expect(page.getByTestId("load-more-sessions")).toHaveCount(0);
-  await page.getByTestId("filter-Cursor").click();
+  await chooseChannel(page, "Cursor");
   await page.getByTestId("view-projects").click();
   const bulkProject = page.getByTestId("project-group").filter({ hasText: "bulk-project" });
-  await page.getByTestId("project-toggle-project-bulk").click();
+  await page.getByTestId("project-toggle-group:bulk-project").click();
   await expect(bulkProject.locator(".session-row")).toHaveCount(20);
 });
 
 test("[SESSION-009] newly completed sessions stay unread until opened", async ({ page }) => {
   const gateway = await installConnectedGateway(page);
   await page.goto("/");
+  await chooseChannel(page, "Codex");
   await expect(page.getByText("TestMac.local")).toBeVisible();
   await expect(page.getByTestId("filter-feedback")).toContainText("已完成 · 未读0");
 
@@ -1305,6 +1355,7 @@ test("[SESSION-009] newly completed sessions stay unread until opened", async ({
   codexSession.status = "completed";
   codexSession.updatedAt = new Date(Date.now() + 60_000).toISOString();
   await page.reload();
+  await chooseChannel(page, "Codex");
   await expect(page.getByTestId("filter-feedback")).toContainText("进行中0");
   await expect(page.getByTestId("filter-feedback")).toContainText("已完成 · 未读1");
   await expect(page.getByTestId("session-codex-session")).not.toContainText("已完成");
@@ -1320,6 +1371,7 @@ test("[SESSION-009] newly completed sessions stay unread until opened", async ({
   await expect(page.getByTestId("filter-feedback")).toContainText("已完成 · 未读0");
   await expect(page.getByTestId("session-state-list-codex-session")).toHaveCount(0);
   await page.reload();
+  await chooseChannel(page, "Codex");
   await expect(page.getByTestId("filter-feedback")).toContainText("已完成 · 未读0");
   await expect(page.getByTestId("session-state-list-codex-session")).toHaveCount(0);
 });
@@ -1346,6 +1398,7 @@ test("[HISTORY-001][HISTORY-003] read-only history moves its hint from the row t
   ));
 
   await page.goto("/");
+  await chooseChannel(page, "Codex");
   const row = page.getByTestId("session-read-only-native");
   await expect(row).toBeVisible();
   await expect(row).not.toContainText("只读记录");
@@ -1410,6 +1463,7 @@ test("[HISTORY-001][HISTORY-002][SESSION-004] active native Codex status and out
   ));
 
   await page.goto("/");
+  await chooseChannel(page, "Codex");
   await expect(page.getByTestId("session-state-list-active-native-codex")).toHaveAttribute(
     "aria-label",
     "运行中",
@@ -1471,6 +1525,7 @@ test("[STREAM-002] gateway session detail prefers SSE with Last-Event-ID resume"
   });
 
   await page.goto("/");
+  await chooseChannel(page, "Codex");
   await page.getByTestId("session-live-session").click();
   await expect(page.getByTestId("session-stream")).toContainText("通过 SSE 推送的输出。", { timeout: 5_000 });
   expect(sseRequests.length).toBeGreaterThan(0);
@@ -1480,6 +1535,7 @@ test("[STREAM-002] gateway session detail prefers SSE with Last-Event-ID resume"
 test("[SESSION-006] running gateway session can be cancelled and shows cancelled state", async ({ page }) => {
   await installConnectedGateway(page);
   await page.goto("/");
+  await chooseChannel(page, "Codex");
   await page.getByTestId("session-codex-session").click();
   await expect(page.getByTestId("session-cancel")).toBeVisible();
   await page.getByTestId("session-cancel").click();
@@ -1529,8 +1585,9 @@ test("[AGENT-001] mobile reads /v1/agents and disables missing CLI in tabs and n
   ));
 
   await page.goto("/");
-  await expect(page.getByTestId("agent-install-Claude")).toHaveText("未安装");
-  await expect(page.getByTestId("filter-Claude")).toBeDisabled();
+  await expect(page.getByTestId("channel-Cursor")).toContainText("2026.01.0");
+  await expect(page.getByTestId("channel-Claude")).toHaveCount(0);
+  await chooseChannel(page, "Cursor");
   await page.getByTestId("new-session").click();
   await expect(page.getByText("任务将在 TestMac.local 上执行")).toBeVisible();
   await expect(page.getByTestId("new-session-agent-Claude")).toBeDisabled();
@@ -1561,6 +1618,7 @@ test("[CONN-001] background sync failure clears online UI", async ({ page }) => 
   });
 
   await page.goto("/");
+  await chooseChannel(page, "Codex");
   await expect(page.getByTestId("new-session")).toBeVisible();
   failSync = true;
   await page.waitForTimeout(900);
@@ -1570,17 +1628,17 @@ test("[CONN-001] background sync failure clears online UI", async ({ page }) => 
 
 test("[SESSION-009] archive hides session from default list", async ({ page }) => {
   await openConnectedHome(page);
-  const target = page.getByTestId("session-row").filter({ hasText: "Code review pass" }).first();
+  const target = page.locator(".session-row-shell").filter({ hasText: "修复登录流程" }).first();
   await expect(target).toBeVisible();
   await target.getByTestId(/session-archive-/).click();
   await expect(page.getByText("已存档")).toBeVisible();
-  await expect(page.getByTestId("session-row").filter({ hasText: "Code review pass" })).toHaveCount(0);
+  await expect(page.locator(".session-row-shell").filter({ hasText: "修复登录流程" })).toHaveCount(0);
   await expect(page.getByTestId("view-archived")).toHaveCount(0);
 });
 
 test("[SESSION-009] running sessions cannot be archived from the list", async ({ page }) => {
-  await openConnectedHome(page);
-  const target = page.getByTestId("session-row").filter({ hasText: "Streaming assistant output" }).first();
+  await openConnectedHome(page, "Codex");
+  const target = page.locator(".session-row-shell").filter({ hasText: "运行支付测试" }).first();
   await expect(target).toBeVisible();
   await expect(target.getByTestId(/session-archive-/)).toHaveCount(0);
 });

@@ -23,7 +23,7 @@ Remote Agent 由三部分组成：
 ## 2. 快速上手
 
 1. 在 Mac 启动网关（开发：`REMOTE_AGENT_ROOTS=<白名单根目录> npm run dev`；或安装 launchd 服务）。
-2. 在 Mac 运行 `npm run pair`，得到 6 位一次性配对码。
+2. 在 Mac 运行 `npm run pair`，得到 8 位一次性配对码。
 3. 手机打开应用 → 设备 → 填入网关地址与配对码。
 4. 配对成功后自动同步 Cursor / Claude / Codex 会话；可筛选、按项目浏览、新建或续接。
 
@@ -33,7 +33,7 @@ Remote Agent 由三部分组成：
 
 ### 3.1 配对
 
-- Mac 仅允许本机回环生成 6 位配对码；默认约 5 分钟过期，用一次即失效。
+- Mac 仅允许本机回环生成 8 位配对码；默认约 5 分钟过期，用一次即失效。
 - 手机提交网关 URL、设备名与配对码，换取设备令牌（token）。
 - 原生端令牌进系统安全存储（iOS Keychain / Android Keystore）；Web 联调版使用 `localStorage`（勿用于不可信浏览器）。
 

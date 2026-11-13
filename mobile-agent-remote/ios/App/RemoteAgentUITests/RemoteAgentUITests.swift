@@ -35,7 +35,7 @@ final class RemoteAgentUITests: XCTestCase {
     // [SESSION-004] [SESSION-005] [SESSION-008] [FILE-001] [MOBILE-002]
     func testCompleteNativeGatewayFlow() throws {
         pairingCode = try fetchPairingCode(port: 17831)
-        XCTAssertTrue(pairingCode.range(of: #"^\d{6}$"#, options: .regularExpression) != nil)
+        XCTAssertTrue(pairingCode.range(of: #"^\d{8}$"#, options: .regularExpression) != nil)
         try setGatewayDelay(0, port: 17831)
         try setGatewayDelay(0, port: 17832)
         addTeardownBlock { [weak self] in
@@ -169,7 +169,7 @@ final class RemoteAgentUITests: XCTestCase {
         let urlField = app.textFields.firstMatch
         let codeField = app.secureTextFields.firstMatch
         replaceText(in: urlField, with: "http://127.0.0.1:17831")
-        let rejectedCode = pairingCode == "100000" ? "999999" : "100000"
+        let rejectedCode = pairingCode == "10000000" ? "99999999" : "10000000"
         replaceText(in: codeField, with: rejectedCode)
         submitPairing(expecting: "配对码无效或已过期")
         XCTAssertTrue(app.buttons["配对并保存连接"].exists)
@@ -221,7 +221,7 @@ final class RemoteAgentUITests: XCTestCase {
         replaceText(in: urlField, with: "http://127.0.0.1:\(port)")
         XCTAssertEqual(urlField.value as? String, "http://127.0.0.1:\(port)")
         if verifyRejectedCode {
-            let rejectedCode = pairingCode == "100000" ? "999999" : "100000"
+            let rejectedCode = pairingCode == "10000000" ? "99999999" : "10000000"
             replaceText(in: codeField, with: rejectedCode)
             submitPairing(expecting: "配对码无效或已过期")
             closeVisibleSheet()

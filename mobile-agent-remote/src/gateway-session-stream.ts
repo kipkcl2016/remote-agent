@@ -55,6 +55,21 @@ export function openGatewaySessionEventStream(options: {
   let activeReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
   const abortController = new AbortController();
 
+  const recoverEvent = async (payload: unknown): Promise<unknown> => {
+    const event = payload as { seq?: number; payload?: { _truncated?: boolean } } | null;
+    if (event?.payload?._truncated !== true) return payload;
+    if (!Number.isSafeInteger(event.seq) || event.seq! < 1) throw new Error("SSE 事件序号无效");
+    const response = await fetch(
+      `${options.baseUrl}/v1/sessions/${encodeURIComponent(options.sessionId)}/events?after=${event.seq! - 1}`,
+      { headers: { Accept: "application/json", Authorization: `Bearer ${options.token}` }, signal: abortController.signal },
+    );
+    if (!response.ok) throw new Error(`无法读取完整事件 (${response.status})`);
+    const body = await response.json() as { data?: Array<{ seq?: number }> };
+    const full = Array.isArray(body.data) ? body.data.find((item) => item.seq === event.seq) : undefined;
+    if (!full) throw new Error("完整事件暂不可用");
+    return full;
+  };
+
   const scheduleReconnect = () => {
     if (closed || !options.shouldContinue()) return;
     failureCount += 1;
@@ -84,7 +99,6 @@ export function openGatewaySessionEventStream(options: {
         throw new Error(payload.error?.message ?? `Mac 网关返回 ${response.status}`);
       }
       if (!response.body) throw new Error("Mac 网关 SSE 响应无效");
-      failureCount = 0;
       activeReader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
@@ -95,11 +109,10 @@ export function openGatewaySessionEventStream(options: {
         const parsed = parseSseBuffer(buffer);
         buffer = parsed.remainder;
         for (const message of parsed.messages) {
-          try {
-            options.callbacks.onGatewayEvent(JSON.parse(message.data ?? "{}"));
-          } catch (error) {
-            options.callbacks.onStreamError(error instanceof Error ? error : new Error("无法解析 SSE 事件"));
-          }
+          const payload = await recoverEvent(JSON.parse(message.data ?? "{}"));
+          if (closed) return;
+          options.callbacks.onGatewayEvent(payload);
+          failureCount = 0;
         }
       }
       activeReader.releaseLock();
@@ -109,6 +122,12 @@ export function openGatewaySessionEventStream(options: {
       if (closed || (error instanceof DOMException && error.name === "AbortError")) return;
       options.callbacks.onStreamError(error instanceof Error ? error : new Error("SSE 连接失败"));
       scheduleReconnect();
+    } finally {
+      if (activeReader) {
+        await activeReader.cancel().catch(() => undefined);
+        activeReader.releaseLock();
+        activeReader = null;
+      }
     }
   };
 

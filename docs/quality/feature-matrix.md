@@ -112,3 +112,14 @@
 7. Android SecureCredentials 平台测试，以及 iOS/Android 坏密文和非法 key 的原生负向测试。
 
 功能没有被改动时，这些缺口可以保留并在交付中如实说明；一旦相关行为发生变化，不得继续用旧的部分覆盖作为完整验收依据。
+
+## 2026-10-11 修复验收补充
+
+| 功能 ID | 新增或更新证据 | 剩余边界 |
+| --- | --- | --- |
+| `PAIR-001/002` | Web、原生 fixture、iOS XCUITest 与协议统一为 8 位；移动 CI 加入交互门禁 | iOS/Android 原生流程本轮未运行 |
+| `STREAM-002` | `sse-event.test.ts`：UTF-8 大事件合法 JSON/大小/原文不变；`gateway.test.ts`：SSE 补发占位和 JSON 原文；`gateway-session-stream.test.mjs`：按序恢复、恢复失败不跳游标 | 真实网络/前后台切换仍需验收 |
+| `AGENT-001/002` | `cli-launcher.test.ts`：Windows 二进制、含空格 npm shim、参数字面值、拒绝未知或越界 shim；三处 CLI 探测共用解析器 | 未在 Windows 实机执行 |
+| `SESSION-005/HISTORY-003` | `acp-approval.test.ts`：加载原 ID、过滤回放、不支持/失败时拒绝静默新建；审批状态断言在挑战出现后读取 | mock ACP 证据不能替代真实 Claude smoke |
+| `SESSION-001/002/004/006/007/008/009` | 产品测试按先选择渠道、每渠道隔离列表和标题下拉切换验收；补齐存档测试 helper 与真实 fixture | 保留原键盘/滚动/安全区断言 |
+| `SETTING-002` | UI 明确提示未启用系统通知；开关持久化合同不变 | 通知行为仍未实现 |

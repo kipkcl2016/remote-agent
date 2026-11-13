@@ -39,7 +39,7 @@ async function handlePrompt(sessionId, promptText) {
     sessionId,
     update: {
       sessionUpdate: "agent_message_chunk",
-      content: { type: "text", text: `Echo: ${promptText}\n` },
+      content: { type: "text", text: `Echo (${sessionId}): ${promptText}\n` },
     },
   });
   notify("session/update", {
@@ -145,10 +145,11 @@ rl.on("line", async (line) => {
 
   const { id, method, params } = message;
   if (method === "initialize") {
+    if (process.env.MOCK_ACP_SLOW_INIT === "1") await new Promise((resolve) => setTimeout(resolve, 10_000));
     respond(id, {
       protocolVersion: params?.protocolVersion ?? 1,
       agentCapabilities: {
-        loadSession: false,
+        loadSession: process.env.MOCK_ACP_NO_LOAD !== "1",
         promptCapabilities: { image: false, audio: false, embeddedContext: false },
       },
       agentInfo: { name: "mock-acp-agent", version: "0.0.1" },
@@ -159,6 +160,20 @@ rl.on("line", async (line) => {
   if (method === "session/new") {
     currentSessionId = `mock-session-${Date.now()}`;
     respond(id, { sessionId: currentSessionId });
+    return;
+  }
+
+  if (method === "session/load") {
+    if (process.env.MOCK_ACP_FAIL_LOAD === "1") {
+      write({ jsonrpc: "2.0", id, error: { code: -32000, message: "Session unavailable" } });
+      return;
+    }
+    currentSessionId = params.sessionId;
+    notify("session/update", {
+      sessionId: currentSessionId,
+      update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Replayed history" } },
+    });
+    respond(id, {});
     return;
   }
 

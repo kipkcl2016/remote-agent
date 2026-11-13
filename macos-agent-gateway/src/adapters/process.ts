@@ -1,7 +1,5 @@
-import { access } from "node:fs/promises";
-import { constants } from "node:fs";
-import { delimiter, join } from "node:path";
 import { spawn } from "node:child_process";
+import { resolveCliLauncher, type CliLauncher } from "../cli-launcher.js";
 import type {
   AdapterEvent,
   AdapterLaunchRequest,
@@ -40,7 +38,7 @@ export class ProcessAgentAdapter implements AgentAdapter {
   }
 
   async detect(): Promise<AgentAvailability> {
-    const executable = await findExecutable(this.command);
+    const executable = await resolveCliLauncher(this.command);
     const version = executable ? await readVersion(executable) : undefined;
     return {
       kind: this.kind,
@@ -57,10 +55,10 @@ export class ProcessAgentAdapter implements AgentAdapter {
     request: AdapterLaunchRequest,
     emit: (event: AdapterEvent) => void,
   ): Promise<RunningAgent> {
-    const executable = await findExecutable(this.command);
+    const executable = await resolveCliLauncher(this.command);
     if (!executable) throw new Error(`${this.command} is not installed or not on PATH`);
 
-    const child = spawn(executable, this.#buildArgs(request), {
+    const child = spawn(executable.executable, [...executable.prefixArgs, ...this.#buildArgs(request)], {
       cwd: request.cwd,
       env: {
         ...process.env,
@@ -156,31 +154,9 @@ export class ProcessAgentAdapter implements AgentAdapter {
   }
 }
 
-async function findExecutable(command: string): Promise<string | undefined> {
-  if (command.includes("/")) {
-    try {
-      await access(command, constants.X_OK);
-      return command;
-    } catch {
-      return undefined;
-    }
-  }
-
-  for (const directory of (process.env.PATH ?? "").split(delimiter).filter(Boolean)) {
-    const candidate = join(directory, command);
-    try {
-      await access(candidate, constants.X_OK);
-      return candidate;
-    } catch {
-      // Continue searching PATH.
-    }
-  }
-  return undefined;
-}
-
-async function readVersion(executable: string): Promise<string | undefined> {
+async function readVersion(executable: CliLauncher): Promise<string | undefined> {
   return new Promise((resolve) => {
-    const child = spawn(executable, ["--version"], {
+    const child = spawn(executable.executable, [...executable.prefixArgs, "--version"], {
       shell: false,
       stdio: ["ignore", "pipe", "ignore"],
     });
